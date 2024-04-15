@@ -77,19 +77,23 @@ adj_label = torch.sparse.FloatTensor(torch.LongTensor(adj_label[0].astype(float)
 features = torch.sparse.FloatTensor(torch.LongTensor(features[0].astype(float).T),
                             torch.FloatTensor(features[1]), 
                             torch.Size(features[2]))
-edges = torch.Tensor(edges)
+Y_list = torch.Tensor(edges)
 
 # to GPU
 adj_norm = adj_norm.to(device)
 adj_label = adj_label.to(device)
 features = features.to(device)
-edges = edges.to(device)
+Y_list = Y_list.to(device)
 
-def get_acc(adj_rec, adj_label):
-    labels_all = adj_label.to_dense().view(-1).long()
-    preds_all = (adj_rec > 0.5).view(-1).long()
-    accuracy = (preds_all == labels_all).sum().float() / labels_all.size(0)
-    return accuracy
+def get_acc(adj_recs, adj_labels):
+    acc = 0.0
+    for adj_rec, adj_label in zip(adj_recs, adj_labels):
+        labels_all = adj_label.to_dense().view(-1).long()
+        preds_all = (adj_rec > 0.5).view(-1).long()
+        accuracy = (preds_all == labels_all).sum().float() / labels_all.size(0)
+        acc += accuracy
+        acc = acc / args.num_layers
+    return acc
 
 ################################ Model ##################################
 # init model and optimizer
@@ -108,7 +112,7 @@ store_loss3 = torch.zeros(args.num_epoch).to(device)
 # store_ari = torch.zeros(args.num_epoch).to(device)
 store_ari = []
 
-def ELBO_Loss(gamma, pi_k, mu_k, log_cov_k, mu_phi, log_cov_phi, A_pred_list, P):
+def Multi_ELBO_Loss(gamma, pi_k, mu_k, log_cov_k, mu_phi, log_cov_phi, A_pred_list, P):
     # Multi-layer graph reconstruction loss
     Loss1 = 0.0
     for A_pred, adj_label in zip(A_pred_list, adj_labels):
@@ -193,7 +197,7 @@ for epoch in range(args.num_epoch):
 
     # A_pred = model.decoder(z, edges, model.alpha, model.beta)
 
-     A_pred_list = model.decoder(Z, Y_list)
+    A_pred_list = model.decoder(z, Y_list)
 
     if epoch < 1 or (epoch + 1) % 1 == 0:
         # update pi_k, mu_k and log_cov_k
@@ -214,7 +218,7 @@ for epoch in range(args.num_epoch):
     log_cov_k = model.log_cov_k
     mu_k = model.mu_k
     gamma = model.gamma
-    loss, loss1, loss2, loss3 = ELBO_Loss(gamma, pi_k, mu_k, log_cov_k, mu_phi, log_cov_phi, A_pred, args.hidden2_dim)
+    loss, loss1, loss2, loss3 = Multi_ELBO_Loss(gamma, pi_k, mu_k, log_cov_k, mu_phi, log_cov_phi, A_pred_list, args.emb_dim)
 
     if epoch > 1:    
         # calculate of ELBO loss
