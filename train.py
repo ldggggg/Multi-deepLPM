@@ -14,6 +14,7 @@ from input_data import load_data
 from preprocessing import *
 import model
 import args
+from simu import generate_matrices
 from evaluation import eva
 
 # Train on CPU or GPU
@@ -22,42 +23,67 @@ device = torch.device('cuda:0')  # GPU
 # print(torch.cuda.is_available())
 # print(device)
 # os.environ['CUDA_VISIBLE_DEVICES'] = ""  # CPU
-print('Number of clusters:.................'+str(args.num_clusters))
 
 
 ##################### Load data ########################
-if args.dataset == 'eveques':
-    features, adj, edges = load_data(args.dataset)  # load data
-    adj = sp.csr_matrix(adj)
-    features = sp.csr_matrix(features)
-
-elif args.dataset == 'cora':
-    features, adj, edges = load_data(args.dataset)  # load data
-    adj = sp.csr_matrix(adj)
-    features = sp.csr_matrix(features)
-    labels = np.loadtxt("data/cora/cora_labels.txt")  # class labels
-
-elif args.dataset == 'simuA':
-    # adj, labels = create_simuA(args.num_points, 3, args.delta)  # or 'simuA': create_simuA
-    # features = np.zeros((adj.shape[0], args.input_dim))
-    # np.fill_diagonal(features, 1)
-    adj = np.loadtxt('simuA/{}.adj'.format(args.dataset), dtype=float).tolist()
-    labels = np.loadtxt('simuA/{}.lab'.format(args.dataset))
-    features = np.loadtxt('simuA/{}.feat'.format(args.dataset), dtype=float)
-    adj = sp.csr_matrix(adj)
-    features = sp.csr_matrix(features)
-    edges = 0
-
-elif args.dataset == 'simuC':
-    adj, labels = create_simuC(args.num_points, args.num_clusters)
-    features = np.zeros((adj.shape[0], args.input_dim))
-    np.fill_diagonal(features, 1)
-    adj = sp.csr_matrix(adj)
-    features = sp.csr_matrix(features)
-    edges = 0
+if args.dataset == 'simu':
+    adj_matrices, cov_matrices, feat_matrix = generate_matrices()
+    print('Generated adjacency and covariate matrices.')
 
 
-##################### Some preprocessing ########################
+# Initialize lists to store the processed matrices
+processed_adj_norms = []
+processed_adj_labels = []
+processed_edges = []
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+# Process each pair of adjacency and covariate matrix and feature matrix
+features = sp.csr_matrix(feat_matrix)
+features = sparse_to_tuple(features.tocoo())
+features = torch.sparse.FloatTensor(torch.LongTensor(features[0].astype(float).T),
+                            torch.FloatTensor(features[1]),
+                            torch.Size(features[2]))
+features = features.to(device)
+
+for adj, cov in zip(adj_matrices, cov_matrices):
+    # Convert adjacency matrix to scipy CSR format
+    adj_csr = sp.csr_matrix(adj)
+
+    # Normalize the adjacency matrix
+    adj_norm = preprocess_graph(adj_csr)
+
+    # Convert feature matrix (if cov is not None) and adjacency matrix
+    if cov is not None:
+        edges = sp.csr_matrix(cov)  # Using covariates as features
+        edges = sparse_to_tuple(edges.tocoo())
+        edges = torch.sparse.FloatTensor(torch.LongTensor(edges[0].astype(float).T),
+                                            torch.FloatTensor(edges[1]),
+                                            torch.Size(edges[2]))
+        edges = edges.to(device)
+        processed_edges.append(edges)
+
+    # Create adj_norm tensor
+    adj_norm = torch.sparse.FloatTensor(torch.LongTensor(adj_norm[0].astype(float).T),
+                                        torch.FloatTensor(adj_norm[1]),
+                                        torch.Size(adj_norm[2]))
+    adj_norm = adj_norm.to(device)
+    processed_adj_norms.append(adj_norm)
+
+    # Create adjacency label for loss calculation
+    adj_label = adj_csr + sp.eye(adj_csr.shape[0])
+    adj_label = sparse_to_tuple(adj_label)
+    adj_label = torch.sparse.FloatTensor(torch.LongTensor(adj_label[0].astype(float).T),
+                                         torch.FloatTensor(adj_label[1]),
+                                         torch.Size(adj_label[2]))
+    adj_label = adj_label.to(device)
+    processed_adj_labels.append(adj_label)
+
+
+### old 
+adj = sp.csr_matrix(adj)
+features = sp.csr_matrix(features)
+
 adj_norm = preprocess_graph(adj)  # used to train the encoder
 features = sparse_to_tuple(features.tocoo())
 # adj = sparse_to_tuple(adj)  # original adj
@@ -77,13 +103,12 @@ adj_label = torch.sparse.FloatTensor(torch.LongTensor(adj_label[0].astype(float)
 features = torch.sparse.FloatTensor(torch.LongTensor(features[0].astype(float).T),
                             torch.FloatTensor(features[1]), 
                             torch.Size(features[2]))
-Y_list = torch.Tensor(edges)
 
 # to GPU
 adj_norm = adj_norm.to(device)
 adj_label = adj_label.to(device)
 features = features.to(device)
-Y_list = Y_list.to(device)
+
 
 def get_acc(adj_recs, adj_labels):
     acc = 0.0

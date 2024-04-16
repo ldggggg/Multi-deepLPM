@@ -67,7 +67,6 @@ def load_data(dataset):
             np.fill_diagonal(features, 1)
         edges = np.load("data/cora/cora_edges49.npy")  # N*N*49
 
-
     return features, adjacency, edges
 
 
