@@ -16,6 +16,7 @@ import model
 import args
 from simu import generate_matrices
 from evaluation import eva
+from testA import create_simuA
 
 # Train on CPU or GPU
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
@@ -30,13 +31,15 @@ if args.dataset == 'simu':
     adj_matrices, cov_matrices, feat_matrix = generate_matrices()
     print('Generated adjacency and covariate matrices.')
 
+elif args.dataset == 'simuA':
+    adj_matrices, labels = create_simuA(args.num_points, args.num_clusters)
+    feat_matrix = np.eye(args.num_points)
+    cov_matrices = [np.zeros(args.num_points), np.zeros(args.num_points), np.zeros(args.num_points)]
 
 # Initialize lists to store the processed matrices
 processed_adj_norms = []
 processed_adj_labels = []
 processed_edges = []
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Process each pair of adjacency and covariate matrix and feature matrix
 features = sp.csr_matrix(feat_matrix)
@@ -80,36 +83,6 @@ for adj, cov in zip(adj_matrices, cov_matrices):
     processed_adj_labels.append(adj_label)
 
 
-### old 
-adj = sp.csr_matrix(adj)
-features = sp.csr_matrix(features)
-
-adj_norm = preprocess_graph(adj)  # used to train the encoder
-features = sparse_to_tuple(features.tocoo())
-# adj = sparse_to_tuple(adj)  # original adj
-adj_label = adj + sp.eye(adj.shape[0])  # used to calculate the loss
-adj_label = sparse_to_tuple(adj_label)
-
-# Create Model
-adj_norm = torch.sparse.FloatTensor(torch.LongTensor(adj_norm[0].astype(float).T),
-                            torch.FloatTensor(adj_norm[1].astype(float)),
-                            torch.Size(adj_norm[2]))
-# adj = torch.sparse.FloatTensor(torch.LongTensor(adj[0].astype(float).T),
-#                             torch.FloatTensor(adj[1].astype(float)),
-#                             torch.Size(adj[2]))
-adj_label = torch.sparse.FloatTensor(torch.LongTensor(adj_label[0].astype(float).T),
-                            torch.FloatTensor(adj_label[1]),
-                            torch.Size(adj_label[2]))
-features = torch.sparse.FloatTensor(torch.LongTensor(features[0].astype(float).T),
-                            torch.FloatTensor(features[1]), 
-                            torch.Size(features[2]))
-
-# to GPU
-adj_norm = adj_norm.to(device)
-adj_label = adj_label.to(device)
-features = features.to(device)
-
-
 def get_acc(adj_recs, adj_labels):
     acc = 0.0
     for adj_rec, adj_label in zip(adj_recs, adj_labels):
@@ -122,22 +95,21 @@ def get_acc(adj_recs, adj_labels):
 
 ################################ Model ##################################
 # init model and optimizer
-model = getattr(model, args.model)(adj_norm)
+model = getattr(model, args.model)(processed_adj_norms)
 model.to(device)  # to GPU
 
-model.pretrain(features, adj_label, edges)  # pretraining
+model.pretrain(features, processed_adj_labels, processed_edges, labels)  # pretraining
 
-optimizer = Adam(model.parameters(), lr=args.learning_rate)  # , weight_decay=0.01
+optimizer = Adam(model.parameters(), lr=args.train_lr)  # , weight_decay=0.01
 
 # store loss
-store_loss = torch.zeros(args.num_epoch).to(device)
-store_loss1 = torch.zeros(args.num_epoch).to(device)
-store_loss2 = torch.zeros(args.num_epoch).to(device)
-store_loss3 = torch.zeros(args.num_epoch).to(device)
-# store_ari = torch.zeros(args.num_epoch).to(device)
+store_loss = torch.zeros(args.train_epochs).to(device)
+store_loss1 = torch.zeros(args.train_epochs).to(device)
+store_loss2 = torch.zeros(args.train_epochs).to(device)
+store_loss3 = torch.zeros(args.train_epochs).to(device)
 store_ari = []
 
-def Multi_ELBO_Loss(gamma, pi_k, mu_k, log_cov_k, mu_phi, log_cov_phi, A_pred_list, P):
+def Multi_ELBO_Loss(gamma, pi_k, mu_k, log_cov_k, mu_phi, log_cov_phi, A_pred_list, adj_labels, P):
     # Multi-layer graph reconstruction loss
     Loss1 = 0.0
     for A_pred, adj_label in zip(A_pred_list, adj_labels):
@@ -148,13 +120,16 @@ def Multi_ELBO_Loss(gamma, pi_k, mu_k, log_cov_k, mu_phi, log_cov_phi, A_pred_li
             adj_label_dense = adj_label
 
         # Graph reconstruction loss for this layer
-        OO = adj_label_dense * (torch.log((A_pred / (1. - A_pred)) + 1e-16)) + torch.log((1. - A_pred) + 1e-16)
-        OO.fill_diagonal_(0)
-        OO = OO.to(device)
-        Loss_layer = -torch.sum(OO)
+        # OO = adj_label_dense * (torch.log((A_pred / (1. - A_pred)) + 1e-16)) + torch.log((1. - A_pred) + 1e-16)
+        # OO.fill_diagonal_(0)
+        # OO = OO.to(device)
+        # Loss_layer = -torch.sum(OO)
+        #
+        # # Sum up the loss from each layer
+        # Loss1 += Loss_layer
 
-        # Sum up the loss from each layer
-        Loss1 += Loss_layer
+        Loss1 += F.binary_cross_entropy(A_pred.view(-1), adj_label_dense.view(-1))
+        # Loss1 /= len(A_pred_list)
 
     # KL divergence
     KL = torch.zeros((args.num_points, args.num_clusters))  # N * K
@@ -216,20 +191,18 @@ def visu():
 
 #################################### train model ################################################
 begin = time.time()
-for epoch in range(args.num_epoch):
+for epoch in range(args.train_epochs):
     t = time.time()
     mu_phi, log_cov_phi, z = model.encoder(features)
 
-    # A_pred = model.decoder(z, edges, model.alpha, model.beta)
-
-    A_pred_list = model.decoder(z, Y_list)
+    A_pred_list = model.decoder(z, processed_edges)
 
     if epoch < 1 or (epoch + 1) % 1 == 0:
         # update pi_k, mu_k and log_cov_k
         gamma = model.gamma
         model.update_others(mu_phi.detach().clone(),
                             log_cov_phi.detach().clone(),
-                            gamma, args.hidden2_dim)
+                            gamma, args.emb_dim)
 
         # update gamma
         pi_k = model.pi_k
@@ -237,13 +210,14 @@ for epoch in range(args.num_epoch):
         mu_k = model.mu_k
         model.update_gamma(mu_phi.detach().clone(),
                            log_cov_phi.detach().clone(), 
-                           pi_k, mu_k, log_cov_k, args.hidden2_dim)
+                           pi_k, mu_k, log_cov_k, args.emb_dim)
 
     pi_k = model.pi_k                    # pi_k should be a copy of model.pi_k
     log_cov_k = model.log_cov_k
     mu_k = model.mu_k
     gamma = model.gamma
-    loss, loss1, loss2, loss3 = Multi_ELBO_Loss(gamma, pi_k, mu_k, log_cov_k, mu_phi, log_cov_phi, A_pred_list, args.emb_dim)
+    loss, loss1, loss2, loss3 = Multi_ELBO_Loss(gamma, pi_k, mu_k, log_cov_k, mu_phi, log_cov_phi,
+                                                A_pred_list, processed_adj_labels, args.emb_dim)
 
     if epoch > 1:    
         # calculate of ELBO loss
@@ -252,7 +226,7 @@ for epoch in range(args.num_epoch):
         loss.backward()
         optimizer.step()
 
-    train_acc = get_acc(A_pred, adj_label)
+    train_acc = get_acc(A_pred_list, processed_adj_labels)
 
     if (epoch + 1) % 1 == 0:
         # eva(labels, torch.argmax(gamma, axis=1).cpu().numpy(), epoch)
@@ -303,51 +277,51 @@ print('training time ......................:', end-begin)
 
 
 ################################# plots to show results ###################################
-# # plot train loss
-# f, ax = plt.subplots(1, figsize=(15, 10))
-# plt.subplot(231)
-# plt.plot(store_loss1.cpu().data.numpy(), color='red')
-# plt.title("Reconstruction loss1")
-#
-# plt.subplot(232)
-# plt.plot(store_loss2.cpu().data.numpy(), color='red')
-# plt.title("KL loss2")
-#
-# plt.subplot(233)
-# plt.plot(store_loss3.cpu().data.numpy(), color='red')
-# plt.title("Cluster loss3")
-#
-# plt.subplot(212)
-# plt.plot(store_loss.cpu().data.numpy(), color='red')
-# plt.title("Training loss in total")
-#
-# plt.show()
+# plot train loss
+f, ax = plt.subplots(1, figsize=(15, 10))
+plt.subplot(231)
+plt.plot(store_loss1.cpu().data.numpy(), color='red')
+plt.title("Reconstruction loss1")
 
-print('Min loss:', torch.min(store_loss), 'K='+str(args.num_clusters), 'P='+str(args.hidden2_dim), str(args.use_nodes)+str(args.use_edges))
+plt.subplot(232)
+plt.plot(store_loss2.cpu().data.numpy(), color='red')
+plt.title("KL loss2")
 
-import json
-# Instead of the previous print statement
-print(json.dumps({
-    "min_loss": torch.min(store_loss).item(),
-    "num_clusters": args.num_clusters,
-    "use_nodes": args.use_nodes,
-    "use_edges": args.use_edges
-}))
+plt.subplot(233)
+plt.plot(store_loss3.cpu().data.numpy(), color='red')
+plt.title("Cluster loss3")
 
-if args.dataset != 'eveques':
-    print('Max ARI:', max(store_ari))
-print('alpha, beta:', model.alpha, model.beta)
+plt.subplot(212)
+plt.plot(store_loss.cpu().data.numpy(), color='red')
+plt.title("Training loss in total")
 
-# # plot ARI
+plt.show()
+
+# print('Min loss:', torch.min(store_loss), 'K='+str(args.num_clusters), 'P='+str(args.emb_dim))
+
+# import json
+# # Instead of the previous print statement
+# print(json.dumps({
+#     "min_loss": torch.min(store_loss).item(),
+#     "num_clusters": args.num_clusters,
+#     "use_nodes": args.use_nodes,
+#     "use_edges": args.use_edges
+# }))
+#
 # if args.dataset != 'eveques':
-#     f, ax = plt.subplots(1, figsize=(15, 10))
-#     ax.plot(store_ari, color='blue')
-#     ax.set_title("ARI")
-#     plt.show()
+#     print('Max ARI:', max(store_ari))
+# print('alpha, beta:', model.alpha, model.beta)
+
+# plot ARI
+if args.dataset != 'eveques':
+    f, ax = plt.subplots(1, figsize=(15, 10))
+    ax.plot(store_ari, color='blue')
+    ax.set_title("ARI")
+    plt.show()
 
 
 # ARI with kmeans
-kmeans = KMeans(n_clusters=args.num_clusters).fit(model.encoder.mean.cpu().data.numpy())
+kmeans = KMeans(n_clusters=args.num_clusters).fit(model.encoder.aggregated_mean.cpu().data.numpy())
 labelk = kmeans.labels_
 print("ARI_embedding:", adjusted_rand_score(labels, labelk))
 

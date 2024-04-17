@@ -1,15 +1,19 @@
 ### CONFIGS ###
-dataset = 'simu'
+dataset = 'simuA'
 delta = 0.6
 model = 'MultiLPM'
 
-input_dim = 1000  # dim of X
-hidden_dim = 128
-output_dims = [16, 32, 64]
-emb_dim = 16
-num_layers = 3
-feature_dim = 500  # dim of Y
-num_cluster = 3
+num_clusters = 3  # K
+num_points = 100  # N
+feature_dim = 100  # dim of Y
+input_dim = 100  # dim of X
+hidden_dim = 32
+output_dims = [16, 16, 16]
+emb_dim = 16  # P
+num_layers = 3  # L
 
-pretrain_epochs = 20
-pretrain_lr = 1e-3
+pretrain_epochs = 100
+pretrain_lr = 2e-3
+
+train_epochs = 200
+train_lr = 5e-3
