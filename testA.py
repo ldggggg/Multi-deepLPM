@@ -59,10 +59,11 @@ def create_simuA(N, K):
 
     alpha1 = -3.5
     gamma1 = 0.1  # -3.5-0.1d
-    alpha2 = -2.5
-    gamma2 = 0.2  # -2.5-0.2d
-    alpha3 = -1.0
-    gamma3 = 0.5  # -1-0.5d
+    alpha2 = -0.2
+    gamma2 = 0.5  # -0.2-0.5d
+    # same as a single layer in deepLPM
+    alpha3 = 0.2
+    gamma3 = 1  # 0.2-d
 
     A1 = np.zeros((N, N))
     A2 = np.zeros((N, N))
@@ -79,7 +80,14 @@ def create_simuA(N, K):
             prob3 = expit(alpha3 - gamma3 * dst[i, j])
             A3[i, j] = A3[j, i] = bernoulli.rvs(prob3, loc=0, size=1)
 
-    adj_matrices = [A1, A2, A3]
+
+    # # test multi-layer
+    # adj_matrices = [A1, A2, A3]
+    # test single layer
+    adj_matrices = [A2]
+    print("sparsity A1:", np.sum(A1) / (N * N))
+    print("sparsity A2:", np.sum(A2) / (N * N))
+    print("sparsity A3:", np.sum(A3) / (N * N))
 
     # # Generate a graph for visualization
     # G = nx.Graph()
@@ -134,7 +142,7 @@ def create_simuA(N, K):
     return adj_matrices, Label
 
 # A, Label = create_simu(args.num_points, args.num_clusters)
-# A, Label = create_simuA(100, 3)
+A, Label = create_simuA(100, 3)
 
 ############## loading and manipulatind docs and vocabulary  ###############
 # dct = pickle.load(open('dizionario_2texts.pkl', 'rb'))

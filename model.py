@@ -20,8 +20,6 @@ def glorot_init(input_dim, output_dim):
     init_range = np.sqrt(6.0 / (input_dim + output_dim))
     initial = torch.rand(input_dim, output_dim, dtype = torch.float32) * 2 * init_range - init_range
     initial = initial.to(device)
-    # print('1')
-    # print(initial.shape)
     return nn.Parameter(initial)
 
 
@@ -34,8 +32,11 @@ class GCN(nn.Module):
         self.activation = activation
 
     def forward(self, inputs):
+        # print("X dim:", inputs.shape)
         x = torch.mm(inputs, self.weight)
+        # print("XW dim:", x.shape)
         x = torch.mm(self.adj, x)
+        # print("AXW dim:", x.shape)
         outputs = self.activation(x)
         return outputs
 
@@ -65,29 +66,33 @@ class MultiEncoder(nn.Module):
 
         # Define MLP for aggregated mean and logstd
         total_output_dim = sum(args.output_dims)
-        self.mlp_mean = nn.Sequential(nn.Linear(total_output_dim, total_output_dim // 2), nn.ReLU(), nn.Linear(
-            total_output_dim // 2, args.emb_dim))
-        self.mlp_logstd = nn.Sequential(nn.Linear(total_output_dim, total_output_dim // 2), nn.ReLU(), nn.Linear(
-            total_output_dim // 2, 1))
+        print("total_output_dim:", total_output_dim)
+        self.mlp_mean = nn.Sequential(nn.Linear(total_output_dim, args.emb_dim), nn.ReLU(), nn.Linear(
+            args.emb_dim, args.emb_dim))
+        self.mlp_logstd = nn.Sequential(nn.Linear(total_output_dim, args.emb_dim), nn.ReLU(), nn.Linear(
+            args.emb_dim, 1))
 
     def forward(self, X):
-        all_means = []
-        all_logstds = []
+        self.all_means = []
+        self.all_logstds = []
 
         for encoder in self.encoders:
             hidden = encoder['base_gcn'](X)
             mean = encoder['gcn_mean'](hidden)
             logstd = encoder['gcn_logstd'](hidden)
-            all_means.append(mean)
-            all_logstds.append(logstd)
+            self.all_means.append(mean)
+            self.all_logstds.append(logstd)
 
-        concatenated_means = torch.cat(all_means, dim=1)
-        concatenated_logstds = torch.cat(all_logstds, dim=1)
+        concatenated_means = torch.cat(self.all_means, dim=1)
+        concatenated_logstds = torch.cat(self.all_logstds, dim=1)
 
         self.aggregated_mean = self.mlp_mean(concatenated_means)
         self.aggregated_logstd = self.mlp_logstd(concatenated_logstds)
 
-        gaussian_noise = torch.randn(X.size(0), self.aggregated_mean.size(1)).to(device)
+        # self.aggregated_mean = torch.stack(self.all_means).mean(dim=0)
+        # self.aggregated_logstd = torch.stack(self.all_logstds).mean(dim=0)
+
+        gaussian_noise = torch.randn(X.size(0), args.emb_dim).to(device)
         sampled_z = gaussian_noise * torch.exp(self.aggregated_logstd / 2) + self.aggregated_mean
 
         return self.aggregated_mean, self.aggregated_logstd, sampled_z
@@ -101,7 +106,7 @@ class MultiDecoder(nn.Module):
         self.gammas = nn.Parameter(torch.randn(args.num_layers))
 
     def forward(self, Z, Y_list):
-        # Y_list contains the node features for each layer: [Y^(1), Y^(2), ..., Y^(L)]
+        # Y_list contains the edge features for each layer: [Y^(1), Y^(2), ..., Y^(L)]
         A_pred_list = []
 
         for l in range(args.num_layers):
@@ -134,7 +139,7 @@ class MultiLPM(nn.Module):
         self.decoder = MultiDecoder()
 
         # N * K, assuming N is the number of points (nodes) and K is the number of clusters
-        self.gamma = nn.Parameter(torch.FloatTensor(adj_matrices[0].size(0), args.num_clusters).fill_(0.1),
+        self.delta = nn.Parameter(torch.FloatTensor(adj_matrices[0].size(0), args.num_clusters).fill_(0.1),
                                   requires_grad=False)
 
         # K
@@ -150,17 +155,17 @@ class MultiLPM(nn.Module):
 
     def pretrain(self, X, adj_labels, Y_list, labels):
         # Define an optimizer for the pretraining phase
-        optimizer = Adam(itertools.chain(self.encoder.parameters()), lr=args.pretrain_lr)
+        optimizer = Adam(itertools.chain(self.encoder.parameters(), self.decoder.parameters()), lr=args.pretrain_lr)
 
         for epoch in range(args.pretrain_epochs):
             # Forward pass to get the embeddings from the MultiEncoder
-            z_mu, z_log_sigma, Z = self.encoder(X)
+            z_mu, z_log_sigma, z = self.encoder(X)
 
             # Perform reconstruction using the Decoder
-            A_pred_list = self.decoder(Z, Y_list)  # Modify to add any other required arguments
+            A_pred_list = self.decoder(z, Y_list)  # Modify to add any other required arguments
 
             # Calculate the reconstruction loss for each layer and sum them up
-            loss_total = 0.0
+            loss_list = []
             for A_pred, adj_label in zip(A_pred_list, adj_labels):
                 # Ensure adj_label is on the same device as A_pred
                 adj_label = adj_label.to(A_pred.device)
@@ -168,10 +173,11 @@ class MultiLPM(nn.Module):
                 kl_divergence = 0.5 / A_pred.size(0) * (
                             1 + 2 * z_log_sigma - z_mu ** 2 - torch.exp(z_log_sigma) ** 2).sum(1).mean()
                 loss -= kl_divergence  # to train cora, we need to add the kl divergence
-                loss_total += loss
+                loss_list.append(loss)
+            # print(loss_list)
 
             # Take the average of the losses from all layers
-            loss_total /= len(A_pred_list)
+            loss_total = sum(loss_list) / len(A_pred_list)
 
             # Backpropagation
             optimizer.zero_grad()
@@ -182,22 +188,24 @@ class MultiLPM(nn.Module):
                 print(f"Pretrain Epoch: {epoch + 1}/{args.pretrain_epochs}, Loss: {loss_total.item()}")
 
         # After pretraining, detach the embeddings and run KMeans clustering
-        Z_detached = Z.detach().cpu().numpy()
-        kmeans = KMeans(n_clusters=args.num_clusters).fit(Z_detached)
+        z_detached = z.detach().cpu().numpy()
+        kmeans = KMeans(n_clusters=args.num_clusters).fit(z_detached)
         labelk = kmeans.labels_
         print("pretraining ARI Kmeans:", adjusted_rand_score(labels, labelk))
 
         # Initialize cluster parameters based on KMeans results
-        self.gamma.fill_(1e-16)
-        seq = np.arange(0, len(self.gamma))
-        positions = np.vstack((seq, kmeans.labels_))
-        self.gamma[positions] = 1.
-        # print(self.gamma)
+        self.delta.fill_(1e-16)
+        seq = np.arange(0, len(self.delta))
+        positions = np.vstack((seq, labelk))
+        self.delta[positions] = 1.
+        # print(self.delta)
+
+        self.mu_k.data = torch.from_numpy(kmeans.cluster_centers_).float().to(device)
 
         print('Pretraining completed.')
 
     # Functions for the initialization of cluster parameters
-    def update_gamma(self, mu_phi, log_cov_phi, pi_k, mu_k, log_cov_k, P):
+    def update_delta(self, mu_phi, log_cov_phi, pi_k, mu_k, log_cov_k, P):
         det = 1e-16
         KL = torch.zeros((args.num_points, args.num_clusters), dtype = torch.float32)  # N * K
         KL = KL.to(device)
@@ -211,20 +219,20 @@ class MultiLPM(nn.Module):
 
         denominator = torch.sum(pi_k.unsqueeze(0) * torch.exp(-KL), axis=1, dtype = torch.float32)
         for k in range(args.num_clusters):
-            self.gamma.data[:, k] = pi_k[k] * torch.exp(-KL[:, k]) / denominator + det
+            self.delta.data[:, k] = pi_k[k] * torch.exp(-KL[:, k]) / denominator + det
 
-    def update_others(self, mu_phi, log_cov_phi, gamma, P):
-        N_k = torch.sum(gamma, axis=0, dtype = torch.float32)
+    def update_others(self, mu_phi, log_cov_phi, delta, P):
+        N_k = torch.sum(delta, axis=0, dtype = torch.float32)
 
         self.pi_k.data = N_k / args.num_points
 
         for k in range(args.num_clusters):
-            gamma_k = gamma[:, k]  # N * 1
-            self.mu_k.data[k] = torch.sum(mu_phi * gamma_k.unsqueeze(1), axis=0, dtype = torch.float32) / N_k[k]
+            delta_k = delta[:, k]  # N * 1
+            self.mu_k.data[k] = torch.sum(mu_phi * delta_k.unsqueeze(1), axis=0, dtype = torch.float32) / N_k[k]
             mu_k = self.mu_k
 
             diff = P * torch.exp(log_cov_phi) + torch.sum((mu_k[k].unsqueeze(0) - mu_phi) ** 2, axis=1, dtype = torch.float32).unsqueeze(1)
-            cov_k = torch.sum(gamma_k.unsqueeze(1) * diff, axis=0, dtype = torch.float32) / (P * N_k[k])
+            cov_k = torch.sum(delta_k.unsqueeze(1) * diff, axis=0, dtype = torch.float32) / (P * N_k[k])
             self.log_cov_k.data[k] = torch.log(cov_k)
 
 
@@ -262,15 +270,15 @@ class MultiLPM(nn.Module):
 # # Test the pretrain function
 # model.pretrain(X, adj_labels, Y_list)
 #
-# # Test the update_gamma function with dummy data
+# # Test the update_delta function with dummy data
 # mu_phi = torch.randn(args.num_points, args.emb_dim)
 # log_cov_phi = torch.randn(args.num_points, 1)
 # pi_k = torch.randn(args.num_clusters)
 # mu_k = torch.randn(args.num_clusters, args.emb_dim)
 # log_cov_k = torch.randn(args.num_clusters, 1)
 # P = args.emb_dim
-# model.update_gamma(mu_phi, log_cov_phi, pi_k, mu_k, log_cov_k, P)
+# model.update_delta(mu_phi, log_cov_phi, pi_k, mu_k, log_cov_k, P)
 #
 # # Test the update_others function with dummy data
-# gamma = torch.randn(args.num_points, args.num_clusters)
-# model.update_others(mu_phi, log_cov_phi, gamma, P)
+# delta = torch.randn(args.num_points, args.num_clusters)
+# model.update_others(mu_phi, log_cov_phi, delta, P)

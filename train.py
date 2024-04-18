@@ -34,7 +34,8 @@ if args.dataset == 'simu':
 elif args.dataset == 'simuA':
     adj_matrices, labels = create_simuA(args.num_points, args.num_clusters)
     feat_matrix = np.eye(args.num_points)
-    cov_matrices = [np.zeros(args.num_points), np.zeros(args.num_points), np.zeros(args.num_points)]
+    # cov_matrices = [np.zeros(args.num_points), np.zeros(args.num_points), np.zeros(args.num_points)]
+    cov_matrices = [np.zeros(args.num_points)]
 
 # Initialize lists to store the processed matrices
 processed_adj_norms = []
@@ -52,21 +53,11 @@ features = features.to(device)
 for adj, cov in zip(adj_matrices, cov_matrices):
     # Convert adjacency matrix to scipy CSR format
     adj_csr = sp.csr_matrix(adj)
+    print(adj.shape)
+    print(adj_csr.shape)
 
     # Normalize the adjacency matrix
     adj_norm = preprocess_graph(adj_csr)
-
-    # Convert feature matrix (if cov is not None) and adjacency matrix
-    if cov is not None:
-        edges = sp.csr_matrix(cov)  # Using covariates as features
-        edges = sparse_to_tuple(edges.tocoo())
-        edges = torch.sparse.FloatTensor(torch.LongTensor(edges[0].astype(float).T),
-                                            torch.FloatTensor(edges[1]),
-                                            torch.Size(edges[2]))
-        edges = edges.to(device)
-        processed_edges.append(edges)
-
-    # Create adj_norm tensor
     adj_norm = torch.sparse.FloatTensor(torch.LongTensor(adj_norm[0].astype(float).T),
                                         torch.FloatTensor(adj_norm[1]),
                                         torch.Size(adj_norm[2]))
@@ -82,6 +73,16 @@ for adj, cov in zip(adj_matrices, cov_matrices):
     adj_label = adj_label.to(device)
     processed_adj_labels.append(adj_label)
 
+    # Convert feature matrix (if cov is not None) and adjacency matrix
+    if cov is not None:
+        edges = sp.csr_matrix(cov)  # Using covariates as features
+        edges = sparse_to_tuple(edges.tocoo())
+        edges = torch.sparse.FloatTensor(torch.LongTensor(edges[0].astype(float).T),
+                                            torch.FloatTensor(edges[1]),
+                                            torch.Size(edges[2]))
+        edges = edges.to(device)
+        processed_edges.append(edges)
+
 
 def get_acc(adj_recs, adj_labels):
     acc = 0.0
@@ -90,7 +91,7 @@ def get_acc(adj_recs, adj_labels):
         preds_all = (adj_rec > 0.5).view(-1).long()
         accuracy = (preds_all == labels_all).sum().float() / labels_all.size(0)
         acc += accuracy
-        acc = acc / args.num_layers
+        acc /= args.num_layers
     return acc
 
 ################################ Model ##################################
@@ -109,7 +110,7 @@ store_loss2 = torch.zeros(args.train_epochs).to(device)
 store_loss3 = torch.zeros(args.train_epochs).to(device)
 store_ari = []
 
-def Multi_ELBO_Loss(gamma, pi_k, mu_k, log_cov_k, mu_phi, log_cov_phi, A_pred_list, adj_labels, P):
+def Multi_ELBO_Loss(delta, pi_k, mu_k, log_cov_k, mu_phi, log_cov_phi, A_pred_list, adj_labels, P):
     # Multi-layer graph reconstruction loss
     Loss1 = 0.0
     for A_pred, adj_label in zip(A_pred_list, adj_labels):
@@ -120,16 +121,17 @@ def Multi_ELBO_Loss(gamma, pi_k, mu_k, log_cov_k, mu_phi, log_cov_phi, A_pred_li
             adj_label_dense = adj_label
 
         # Graph reconstruction loss for this layer
-        # OO = adj_label_dense * (torch.log((A_pred / (1. - A_pred)) + 1e-16)) + torch.log((1. - A_pred) + 1e-16)
-        # OO.fill_diagonal_(0)
-        # OO = OO.to(device)
-        # Loss_layer = -torch.sum(OO)
-        #
-        # # Sum up the loss from each layer
-        # Loss1 += Loss_layer
+        OO = adj_label_dense * (torch.log((A_pred / (1. - A_pred)) + 1e-16)) + torch.log((1. - A_pred) + 1e-16)
+        OO.fill_diagonal_(0)
+        OO = OO.to(device)
+        loss_layer = -torch.sum(OO)
+        # print(loss_layer)
 
-        Loss1 += F.binary_cross_entropy(A_pred.view(-1), adj_label_dense.view(-1))
-        # Loss1 /= len(A_pred_list)
+        # Sum up the loss from each layer
+        Loss1 += loss_layer
+
+        # Loss1 += F.binary_cross_entropy(A_pred.view(-1), adj_label_dense.view(-1))
+        Loss1 /= len(A_pred_list)
 
     # KL divergence
     KL = torch.zeros((args.num_points, args.num_clusters))  # N * K
@@ -142,9 +144,9 @@ def Multi_ELBO_Loss(gamma, pi_k, mu_k, log_cov_k, mu_phi, log_cov_phi, A_pred_li
                   + torch.norm(mu_K-mu_phi,dim=1,keepdim=True)**2/torch.exp(log_cov_K)
         KL[:, k] = 0.5*temp.squeeze()
 
-    Loss2 = torch.sum(gamma * KL)
+    Loss2 = torch.sum(delta * KL)
 
-    Loss3 = torch.sum(gamma * (torch.log(pi_k.unsqueeze(0)) - torch.log(gamma)))
+    Loss3 = torch.sum(delta * (torch.log(pi_k.unsqueeze(0)) - torch.log(delta)))
 
     Loss = Loss1 + Loss2 - Loss3
 
@@ -156,8 +158,8 @@ from sklearn.decomposition import PCA
 def visu():
     if args.dataset == 'eveques':
         labelC = []
-        gamma = model.gamma.cpu().data.numpy()
-        labels = np.argmax(gamma, axis=1)
+        delta = model.delta.cpu().data.numpy()
+        labels = np.argmax(delta, axis=1)
         for idx in range(len(labels)):
             if labels[idx] == 0:
                 labelC.append('lightblue')
@@ -199,24 +201,24 @@ for epoch in range(args.train_epochs):
 
     if epoch < 1 or (epoch + 1) % 1 == 0:
         # update pi_k, mu_k and log_cov_k
-        gamma = model.gamma
+        delta = model.delta
         model.update_others(mu_phi.detach().clone(),
                             log_cov_phi.detach().clone(),
-                            gamma, args.emb_dim)
+                            delta, args.emb_dim)
 
-        # update gamma
+        # update delta
         pi_k = model.pi_k
         log_cov_k = model.log_cov_k
         mu_k = model.mu_k
-        model.update_gamma(mu_phi.detach().clone(),
-                           log_cov_phi.detach().clone(), 
+        model.update_delta(mu_phi.detach().clone(),
+                           log_cov_phi.detach().clone(),
                            pi_k, mu_k, log_cov_k, args.emb_dim)
 
     pi_k = model.pi_k                    # pi_k should be a copy of model.pi_k
     log_cov_k = model.log_cov_k
     mu_k = model.mu_k
-    gamma = model.gamma
-    loss, loss1, loss2, loss3 = Multi_ELBO_Loss(gamma, pi_k, mu_k, log_cov_k, mu_phi, log_cov_phi,
+    delta = model.delta
+    loss, loss1, loss2, loss3 = Multi_ELBO_Loss(delta, pi_k, mu_k, log_cov_k, mu_phi, log_cov_phi,
                                                 A_pred_list, processed_adj_labels, args.emb_dim)
 
     if epoch > 1:    
@@ -229,7 +231,7 @@ for epoch in range(args.train_epochs):
     train_acc = get_acc(A_pred_list, processed_adj_labels)
 
     if (epoch + 1) % 1 == 0:
-        # eva(labels, torch.argmax(gamma, axis=1).cpu().numpy(), epoch)
+        # eva(labels, torch.argmax(delta, axis=1).cpu().numpy(), epoch)
         print("Epoch:", '%04d' % (epoch + 1), "train_loss=", "{:.5f}".format(loss.item()),
               "train_loss1=", "{:.5f}".format(loss1.item()), "train_loss2=", "{:.5f}".format(loss2.item()),
               "train_loss3=", "{:.5f}".format(loss3.item()),
@@ -238,7 +240,7 @@ for epoch in range(args.train_epochs):
         # pred = []
         # for i in range(args.num_points):
         #     if i not in delete:
-        #         pred.append(torch.argmax(gamma, axis=1).cpu().numpy()[i])
+        #         pred.append(torch.argmax(delta, axis=1).cpu().numpy()[i])
 
     # if (epoch + 1) % 2000 == 0:
     #     visu()
@@ -266,11 +268,11 @@ for epoch in range(args.train_epochs):
     store_loss2[epoch] = torch.Tensor.item(loss2)
     store_loss3[epoch] = torch.Tensor.item(loss3)
 
-    # store_ari[epoch] = torch.tensor(adjusted_rand_index(labels, torch.argmax(gamma, axis=1)))  # save ARI
+    # store_ari[epoch] = torch.tensor(adjusted_rand_index(labels, torch.argmax(delta, axis=1)))  # save ARI
     if args.dataset == 'eveques':
         print('Unsupervised data without true labels (no ARI) !')
     else:
-        store_ari.append(adjusted_rand_score(labels, torch.argmax(gamma, axis=1).cpu().numpy()))
+        store_ari.append(adjusted_rand_score(labels, torch.argmax(delta, axis=1).cpu().numpy()))
 
 end = time.time()
 print('training time ......................:', end-begin)
@@ -330,7 +332,7 @@ print("ARI_embedding:", adjusted_rand_score(labels, labelk))
 # file = open('cora_data_A_k='+str(args.num_clusters)+'_p=16_'+str(args.use_nodes)+str(args.use_edges)+'.csv', "w")
 # writer = csv.writer(file)
 # mean = model.encoder.mean.cpu().data.numpy()
-# pred_labels = torch.argmax(gamma, axis=1).cpu().numpy()
+# pred_labels = torch.argmax(delta, axis=1).cpu().numpy()
 # for w in range(args.num_points):
 #     writer.writerow([w, mean[w][0],mean[w][1],mean[w][2],mean[w][3],mean[w][4],mean[w][5],mean[w][6],mean[w][7],
 #                      mean[w][8],mean[w][9],mean[w][10],mean[w][11],mean[w][12],mean[w][13],mean[w][14],mean[w][15], pred_labels[w]])  # mean[w][8],mean[w][9],mean[w][10],mean[w][11],mean[w][12],mean[w][13],mean[w][14],mean[w][15]
