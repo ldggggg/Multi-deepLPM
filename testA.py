@@ -84,7 +84,7 @@ def create_simuA(N, K):
     # # test multi-layer
     # adj_matrices = [A1, A2, A3]
     # test single layer
-    adj_matrices = [A2]
+    adj_matrices = [A2, A3]
     print("sparsity A1:", np.sum(A1) / (N * N))
     print("sparsity A2:", np.sum(A2) / (N * N))
     print("sparsity A3:", np.sum(A3) / (N * N))
@@ -142,7 +142,7 @@ def create_simuA(N, K):
     return adj_matrices, Label
 
 # A, Label = create_simu(args.num_points, args.num_clusters)
-A, Label = create_simuA(100, 3)
+# A, Label = create_simuA(100, 3)
 
 ############## loading and manipulatind docs and vocabulary  ###############
 # dct = pickle.load(open('dizionario_2texts.pkl', 'rb'))

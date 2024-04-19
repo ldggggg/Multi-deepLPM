@@ -35,7 +35,7 @@ elif args.dataset == 'simuA':
     adj_matrices, labels = create_simuA(args.num_points, args.num_clusters)
     feat_matrix = np.eye(args.num_points)
     # cov_matrices = [np.zeros(args.num_points), np.zeros(args.num_points), np.zeros(args.num_points)]
-    cov_matrices = [np.zeros(args.num_points)]
+    cov_matrices = [np.zeros(args.num_points), np.zeros(args.num_points)]
 
 # Initialize lists to store the processed matrices
 processed_adj_norms = []
