@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 from torch.optim import Adam
 from torch.optim.lr_scheduler import StepLR
+from torch.nn.utils import clip_grad_norm_
 import scipy.sparse as sp
 import numpy as np
 import os
@@ -35,7 +36,7 @@ elif args.dataset == 'simuA':
     adj_matrices, labels = create_simuA(args.num_points, args.num_clusters)
     feat_matrix = np.eye(args.num_points)
     # cov_matrices = [np.zeros(args.num_points), np.zeros(args.num_points), np.zeros(args.num_points)]
-    cov_matrices = [np.zeros(args.num_points), np.zeros(args.num_points)]
+    cov_matrices = [np.zeros(args.num_points), np.zeros(args.num_points), np.zeros(args.num_points)]
 
 # Initialize lists to store the processed matrices
 processed_adj_norms = []
@@ -146,7 +147,7 @@ def Multi_ELBO_Loss(delta, pi_k, mu_k, log_cov_k, mu_phi, log_cov_phi, A_pred_li
 
     Loss2 = torch.sum(delta * KL)
 
-    Loss3 = torch.sum(delta * (torch.log(pi_k.unsqueeze(0)) - torch.log(delta)))
+    Loss3 = torch.sum(delta * (torch.log(pi_k.unsqueeze(0) + 1e-16) - torch.log(delta + 1e-16)))
 
     Loss = Loss1 + Loss2 - Loss3
 
@@ -226,6 +227,8 @@ for epoch in range(args.train_epochs):
         optimizer.zero_grad()
         # update of GCN
         loss.backward()
+        # clip of gradient
+        clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
 
     train_acc = get_acc(A_pred_list, processed_adj_labels)
@@ -320,12 +323,12 @@ if args.dataset != 'eveques':
     ax.plot(store_ari, color='blue')
     ax.set_title("ARI")
     plt.show()
-
+print("ARI_delta:", max(store_ari))
 
 # ARI with kmeans
 kmeans = KMeans(n_clusters=args.num_clusters).fit(model.encoder.aggregated_mean.cpu().data.numpy())
 labelk = kmeans.labels_
-print("ARI_embedding:", adjusted_rand_score(labels, labelk))
+print("ARI_kmeans_embedding:", adjusted_rand_score(labels, labelk))
 
 ########################### save data for visualisation in R ##################################
 # import csv

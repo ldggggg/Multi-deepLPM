@@ -22,12 +22,17 @@ def glorot_init(input_dim, output_dim):
     initial = initial.to(device)
     return nn.Parameter(initial)
 
+def he_init(input_dim, output_dim):
+    std = np.sqrt(2. / (input_dim + output_dim))
+    initial = torch.randn(input_dim, output_dim, dtype=torch.float32) * std
+    return nn.Parameter(initial.to(device))
+
 
 # Graph convolutional layers
 class GCN(nn.Module):
     def __init__(self, input_dim, output_dim, adj, activation=F.relu, **kwargs):
         super(GCN, self).__init__(**kwargs)
-        self.weight = glorot_init(input_dim, output_dim)
+        self.weight = he_init(input_dim, output_dim)
         self.adj = adj
         self.activation = activation
 
@@ -233,7 +238,7 @@ class MultiLPM(nn.Module):
 
             diff = P * torch.exp(log_cov_phi) + torch.sum((mu_k[k].unsqueeze(0) - mu_phi) ** 2, axis=1, dtype = torch.float32).unsqueeze(1)
             cov_k = torch.sum(delta_k.unsqueeze(1) * diff, axis=0, dtype = torch.float32) / (P * N_k[k])
-            self.log_cov_k.data[k] = torch.log(cov_k)
+            self.log_cov_k.data[k] = torch.log(cov_k + 1e-16)
 
 
 # #######################################  Test #########################################

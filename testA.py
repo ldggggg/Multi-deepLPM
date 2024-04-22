@@ -11,7 +11,7 @@ def create_simuA(N, K):
 # N = args.num_points
 # K = args.num_clusters
 # D = args.hidden2_dim
-    np.random.seed(42)
+    np.random.seed(1)
 
     delta = 0.95
     mu1 = [0, 0]
@@ -57,8 +57,8 @@ def create_simuA(N, K):
     dst = pdist(positions, 'euclidean')
     dst = squareform(dst)
 
-    alpha1 = -3.5
-    gamma1 = 0.1  # -3.5-0.1d
+    alpha1 = -1.5
+    gamma1 = 0.1  # -1.5-0.1d
     alpha2 = -0.2
     gamma2 = 0.5  # -0.2-0.5d
     # same as a single layer in deepLPM
@@ -84,7 +84,7 @@ def create_simuA(N, K):
     # # test multi-layer
     # adj_matrices = [A1, A2, A3]
     # test single layer
-    adj_matrices = [A2, A3]
+    adj_matrices = [A3, A2, A1]
     print("sparsity A1:", np.sum(A1) / (N * N))
     print("sparsity A2:", np.sum(A2) / (N * N))
     print("sparsity A3:", np.sum(A3) / (N * N))
