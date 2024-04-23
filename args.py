@@ -11,8 +11,8 @@ output_dims = [16, 16, 16]  # [16, 16, 16]
 emb_dim = 16  # P
 num_layers = 1  # 3  # L
 
-pretrain_epochs = 25  # 25
-pretrain_lr = 1e-2
+pretrain_epochs = 50  # 25
+pretrain_lr = 1e-2  # 1e-2
 
-train_epochs = 600
+train_epochs = 1000
 train_lr = 5e-3

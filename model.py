@@ -133,6 +133,16 @@ class MultiDecoder(nn.Module):
             A_pred = torch.sigmoid(alpha + Y_beta - distance_term)
             A_pred_list.append(A_pred)
 
+            # A_pred = torch.sigmoid(alpha + Y_beta - distance_term)
+            # # print("Original A_pred min/max:", torch.min(A_pred).item(), torch.max(A_pred).item())
+            #
+            # # Manually clamping values using torch.where
+            # A_pred_clamped = torch.where(A_pred > 1 - 1e-8, torch.full_like(A_pred, 1 - 1e-8), A_pred)
+            # A_pred_clamped = torch.where(A_pred_clamped < 1e-8, torch.full_like(A_pred_clamped, 1e-8), A_pred_clamped)
+            # # print("Manually clamped A_pred min/max:", torch.min(A_pred_clamped).item(),
+            # #       torch.max(A_pred_clamped).item())
+            # A_pred_list.append(A_pred_clamped)
+
         return A_pred_list
 
 
@@ -199,19 +209,19 @@ class MultiLPM(nn.Module):
         print("pretraining ARI Kmeans:", adjusted_rand_score(labels, labelk))
 
         # Initialize cluster parameters based on KMeans results
-        self.delta.fill_(1e-16)
+        self.delta.fill_(1e-8)
         seq = np.arange(0, len(self.delta))
         positions = np.vstack((seq, labelk))
         self.delta[positions] = 1.
         # print(self.delta)
 
-        self.mu_k.data = torch.from_numpy(kmeans.cluster_centers_).float().to(device)
+        # self.mu_k.data = torch.from_numpy(kmeans.cluster_centers_).float().to(device)
 
         print('Pretraining completed.')
 
     # Functions for the initialization of cluster parameters
     def update_delta(self, mu_phi, log_cov_phi, pi_k, mu_k, log_cov_k, P):
-        det = 1e-16
+        det = 1e-8
         KL = torch.zeros((args.num_points, args.num_clusters), dtype = torch.float32)  # N * K
         KL = KL.to(device)
         for k in range(args.num_clusters):
@@ -238,7 +248,7 @@ class MultiLPM(nn.Module):
 
             diff = P * torch.exp(log_cov_phi) + torch.sum((mu_k[k].unsqueeze(0) - mu_phi) ** 2, axis=1, dtype = torch.float32).unsqueeze(1)
             cov_k = torch.sum(delta_k.unsqueeze(1) * diff, axis=0, dtype = torch.float32) / (P * N_k[k])
-            self.log_cov_k.data[k] = torch.log(cov_k + 1e-16)
+            self.log_cov_k.data[k] = torch.log(cov_k + 1e-8)
 
 
 # #######################################  Test #########################################

@@ -19,6 +19,9 @@ from simu import generate_matrices
 from evaluation import eva
 from testA import create_simuA
 
+import pdb
+# from torch.utils.tensorboard import SummaryWriter
+
 # Train on CPU or GPU
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 device = torch.device('cuda:0')  # GPU
@@ -95,24 +98,10 @@ def get_acc(adj_recs, adj_labels):
         acc /= args.num_layers
     return acc
 
-################################ Model ##################################
-# init model and optimizer
-model = getattr(model, args.model)(processed_adj_norms)
-model.to(device)  # to GPU
-
-model.pretrain(features, processed_adj_labels, processed_edges, labels)  # pretraining
-
-optimizer = Adam(model.parameters(), lr=args.train_lr)  # , weight_decay=0.01
-
-# store loss
-store_loss = torch.zeros(args.train_epochs).to(device)
-store_loss1 = torch.zeros(args.train_epochs).to(device)
-store_loss2 = torch.zeros(args.train_epochs).to(device)
-store_loss3 = torch.zeros(args.train_epochs).to(device)
-store_ari = []
 
 def Multi_ELBO_Loss(delta, pi_k, mu_k, log_cov_k, mu_phi, log_cov_phi, A_pred_list, adj_labels, P):
     # Multi-layer graph reconstruction loss
+    det = 1e-8
     Loss1 = 0.0
     for A_pred, adj_label in zip(A_pred_list, adj_labels):
         # Convert adj_label to dense format if necessary
@@ -121,18 +110,28 @@ def Multi_ELBO_Loss(delta, pi_k, mu_k, log_cov_k, mu_phi, log_cov_phi, A_pred_li
         else:
             adj_label_dense = adj_label
 
+        # To prevent loss1=NaN
+        if torch.any(A_pred <= 0) or torch.any(A_pred >= 1):
+            print("A_pred contains values out of expected range!")
+
         # Graph reconstruction loss for this layer
-        OO = adj_label_dense * (torch.log((A_pred / (1. - A_pred)) + 1e-16)) + torch.log((1. - A_pred) + 1e-16)
-        OO.fill_diagonal_(0)
+        OO = adj_label_dense * torch.log((A_pred / (1. - A_pred + det)) + det) + torch.log(
+            (1. - A_pred + det))
+        # OO = adj_label_dense * (torch.log((A_pred / (1. - A_pred)) + 1e-8)) + torch.log((1. - A_pred) + 1e-8)
+        OO.fill_diagonal_(0.0)
         OO = OO.to(device)
+
+        if torch.isnan(OO).any():
+            print("NaN values detected in OO matrix")
+
         loss_layer = -torch.sum(OO)
         # print(loss_layer)
 
         # Sum up the loss from each layer
         Loss1 += loss_layer
 
-        # Loss1 += F.binary_cross_entropy(A_pred.view(-1), adj_label_dense.view(-1))
-        Loss1 /= len(A_pred_list)
+    # Loss1 += F.binary_cross_entropy(A_pred.view(-1), adj_label_dense.view(-1))
+    Loss1 /= len(A_pred_list)
 
     # KL divergence
     KL = torch.zeros((args.num_points, args.num_clusters))  # N * K
@@ -141,13 +140,13 @@ def Multi_ELBO_Loss(delta, pi_k, mu_k, log_cov_k, mu_phi, log_cov_phi, A_pred_li
         log_cov_K = torch.ones_like(log_cov_phi) * log_cov_k[k]
         mu_K = torch.ones((args.num_points, mu_k.shape[1])).to(device) * mu_k[k]
         temp = P*(log_cov_K-log_cov_phi-1) \
-                  + P*torch.exp(log_cov_phi)/torch.exp(log_cov_K) \
-                  + torch.norm(mu_K-mu_phi,dim=1,keepdim=True)**2/torch.exp(log_cov_K)
+                  + P*torch.exp(log_cov_phi)/torch.exp(log_cov_K + det) \
+                  + torch.norm(mu_K-mu_phi,dim=1,keepdim=True)**2/torch.exp(log_cov_K + det)
         KL[:, k] = 0.5*temp.squeeze()
 
     Loss2 = torch.sum(delta * KL)
 
-    Loss3 = torch.sum(delta * (torch.log(pi_k.unsqueeze(0) + 1e-16) - torch.log(delta + 1e-16)))
+    Loss3 = torch.sum(delta * (torch.log(pi_k.unsqueeze(0) + det) - torch.log(delta + det)))
 
     Loss = Loss1 + Loss2 - Loss3
 
@@ -192,6 +191,26 @@ def visu():
     # f.savefig("C:/Users/Dingge/Desktop/results/emb_ARVGA.pdf", bbox_inches='tight')
 
 
+################################ Model ##################################
+# Create a SummaryWriter instance
+# writer = SummaryWriter('runs/model_experiment')
+
+# init model and optimizer
+model = getattr(model, args.model)(processed_adj_norms)
+model.to(device)  # to GPU
+
+model.pretrain(features, processed_adj_labels, processed_edges, labels)  # pretraining
+
+optimizer = Adam(model.parameters(), lr=args.train_lr)  # , weight_decay=0.01
+
+# store loss
+store_loss = torch.zeros(args.train_epochs).to(device)
+store_loss1 = torch.zeros(args.train_epochs).to(device)
+store_loss2 = torch.zeros(args.train_epochs).to(device)
+store_loss3 = torch.zeros(args.train_epochs).to(device)
+store_ari = []
+
+
 #################################### train model ################################################
 begin = time.time()
 for epoch in range(args.train_epochs):
@@ -222,7 +241,11 @@ for epoch in range(args.train_epochs):
     loss, loss1, loss2, loss3 = Multi_ELBO_Loss(delta, pi_k, mu_k, log_cov_k, mu_phi, log_cov_phi,
                                                 A_pred_list, processed_adj_labels, args.emb_dim)
 
-    if epoch > 1:    
+    if torch.isnan(loss).any() or torch.isnan(loss1).any() or torch.isnan(loss2).any() or torch.isnan(loss3).any():
+        print("NaN detected!")
+        pdb.set_trace()  # Activate Python Debugger
+
+    if epoch > 1 or (epoch + 1) % 1 == 0:
         # calculate of ELBO loss
         optimizer.zero_grad()
         # update of GCN
@@ -277,8 +300,14 @@ for epoch in range(args.train_epochs):
     else:
         store_ari.append(adjusted_rand_score(labels, torch.argmax(delta, axis=1).cpu().numpy()))
 
+    if torch.isnan(loss).any() or torch.isnan(loss1).any() or torch.isnan(loss2).any() or torch.isnan(loss3).any():
+        break  # Optionally stop training if a NaN is found
+
 end = time.time()
 print('training time ......................:', end-begin)
+
+# Close the writer when you are done using it
+# writer.close()
 
 
 ################################# plots to show results ###################################

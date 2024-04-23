@@ -11,7 +11,7 @@ def create_simuA(N, K):
 # N = args.num_points
 # K = args.num_clusters
 # D = args.hidden2_dim
-    np.random.seed(1)
+    np.random.seed(8)
 
     delta = 0.95
     mu1 = [0, 0]
