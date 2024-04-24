@@ -13,10 +13,10 @@ def create_simuA(N, K):
 # D = args.hidden2_dim
     np.random.seed(8)
 
-    delta = 0.95
+    zeta = 0.95
     mu1 = [0, 0]
-    mu2 = [delta * 1.5, delta * 1.5]
-    mu3 = [-1.5 * delta, delta * 1.5]
+    mu2 = [zeta * 1.5, zeta * 1.5]
+    mu3 = [-1.5 * zeta, zeta * 1.5]
     z_mu = np.concatenate((mu1,mu2,mu3), axis=0)
     # mu4 = [3, 0]
     # mu5 = [-3, 0]
