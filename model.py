@@ -215,7 +215,7 @@ class MultiLPM(nn.Module):
         self.delta[positions] = 1.
         # print(self.delta)
 
-        # self.mu_k.data = torch.from_numpy(kmeans.cluster_centers_).float().to(device)
+        self.mu_k.data = torch.from_numpy(kmeans.cluster_centers_).float().to(device)
 
         print('Pretraining completed.')
 
@@ -228,9 +228,11 @@ class MultiLPM(nn.Module):
             log_cov_K = torch.ones_like(log_cov_phi) * log_cov_k[k]
             mu_K = torch.ones((args.num_points, mu_k.shape[1])).to(device) * mu_k[k]
             temp = P * (log_cov_K - log_cov_phi - 1) \
-                   + P * torch.exp(log_cov_phi) / torch.exp(log_cov_K) \
-                   + torch.norm(mu_K - mu_phi, dim=1, keepdim=True) ** 2 / torch.exp(log_cov_K)
-            KL[:, k] = 0.5 * temp.squeeze()
+                   + P * torch.exp(log_cov_phi + det) / torch.exp(log_cov_K + det) \
+                   + torch.norm(mu_K - mu_phi, dim=1, keepdim=True) ** 2 / torch.exp(log_cov_K + det)
+            KL[:, k] = 0.5 * temp.squeeze() + det
+            if torch.isnan(KL).any():
+                print("NaN values detected in KL matrix in pretraining")
 
         denominator = torch.sum(pi_k.unsqueeze(0) * torch.exp(-KL), axis=1, dtype = torch.float32)
         for k in range(args.num_clusters):

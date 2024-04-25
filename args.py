@@ -14,5 +14,5 @@ num_layers = 1  # 3  # L
 pretrain_epochs = 50  # 25
 pretrain_lr = 1e-2  # 1e-2
 
-train_epochs = 1000
+train_epochs = 1000  # 1000
 train_lr = 5e-3

@@ -7,13 +7,13 @@ from scipy.special import expit
 from scipy.stats import bernoulli
 import networkx as nx
 
-def create_simuA(N, K):
+def create_simuA(N, K, zeta=0.95, seed=None):
 # N = args.num_points
 # K = args.num_clusters
 # D = args.hidden2_dim
-    np.random.seed(8)
+    if seed is not None:
+        np.random.seed(seed)
 
-    zeta = 0.95
     mu1 = [0, 0]
     mu2 = [zeta * 1.5, zeta * 1.5]
     mu3 = [-1.5 * zeta, zeta * 1.5]
@@ -84,7 +84,7 @@ def create_simuA(N, K):
     # # test multi-layer
     # adj_matrices = [A1, A2, A3]
     # test single layer
-    adj_matrices = [A3, A2, A1]
+    adj_matrices = [A3, A2, A1]  # A3, A2,
     print("sparsity A1:", np.sum(A1) / (N * N))
     print("sparsity A2:", np.sum(A2) / (N * N))
     print("sparsity A3:", np.sum(A3) / (N * N))
@@ -142,7 +142,7 @@ def create_simuA(N, K):
     return adj_matrices, Label
 
 # A, Label = create_simu(args.num_points, args.num_clusters)
-# A, Label = create_simuA(100, 3)
+# A, Label = create_simuA(100, 3, 42, 0.95)
 
 ############## loading and manipulatind docs and vocabulary  ###############
 # dct = pickle.load(open('dizionario_2texts.pkl', 'rb'))
