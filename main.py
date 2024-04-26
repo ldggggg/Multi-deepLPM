@@ -4,9 +4,9 @@ from testA import create_simuA
 from train import run_training # Adjust this import based on your actual module and function
 import model
 
-zeta_values = [0.6, 0.7, 0.8, 0.95]  # [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.95]
-seeds = [42, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]  # [42, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-num_runs = 3
+zeta_values = [0.4, 0.3, 0.2]  # [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.95]
+seeds = [42, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]  # [42, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]  # [42, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+num_runs = 1
 results = []
 
 for zeta in zeta_values:
@@ -18,14 +18,15 @@ for zeta in zeta_values:
             ari_values.append(max_ari)
 
         average_ari = np.mean(ari_values)
-        results.append({'zeta': zeta, 'seed': seed, 'average_ari': average_ari, 'all_aris': ari_values})
+        max_ari = np.max(ari_values)
+        results.append({'zeta': zeta, 'seed': seed, 'max_ari': max_ari, 'average_ari': average_ari, 'all_aris': ari_values})
 
 # Writing results to a CSV file
 with open('experiment_results.csv', 'w', newline='') as file:
-    fieldnames = ['zeta', 'seed', 'average_ari', 'all_aris']
+    fieldnames = ['zeta', 'seed', 'max_ari', 'average_ari', 'all_aris']
     writer = csv.DictWriter(file, fieldnames=fieldnames)
     writer.writeheader()
     for result in results:
-        writer.writerow({'zeta': result['zeta'], 'seed': result['seed'], 'average_ari': result['average_ari'], 'all_aris': "|".join(map(str, result['all_aris']))})
+        writer.writerow({'zeta': result['zeta'], 'seed': result['seed'], 'max_ari': result['max_ari'], 'average_ari': result['average_ari'], 'all_aris': "|".join(map(str, result['all_aris']))})
 
 print("Results saved to experiment_results.csv")

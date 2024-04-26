@@ -169,55 +169,61 @@ class MultiLPM(nn.Module):
         self.log_cov_k = nn.Parameter(torch.FloatTensor(args.num_clusters, 1).fill_(0.1), requires_grad=False)
 
     def pretrain(self, X, adj_labels, Y_list, labels):
-        # Define an optimizer for the pretraining phase
-        optimizer = Adam(itertools.chain(self.encoder.parameters(), self.decoder.parameters()), lr=args.pretrain_lr)
+        if not os.path.exists('./pretrain_model.pk'):
+            # Define an optimizer for the pretraining phase
+            optimizer = Adam(itertools.chain(self.encoder.parameters(), self.decoder.parameters()), lr=args.pretrain_lr)
 
-        for epoch in range(args.pretrain_epochs):
-            # Forward pass to get the embeddings from the MultiEncoder
-            z_mu, z_log_sigma, z = self.encoder(X)
+            for epoch in range(args.pretrain_epochs):
+                # Forward pass to get the embeddings from the MultiEncoder
+                z_mu, z_log_sigma, z = self.encoder(X)
 
-            # Perform reconstruction using the Decoder
-            A_pred_list = self.decoder(z, Y_list)  # Modify to add any other required arguments
+                # Perform reconstruction using the Decoder
+                A_pred_list = self.decoder(z, Y_list)  # Modify to add any other required arguments
 
-            # Calculate the reconstruction loss for each layer and sum them up
-            loss_list = []
-            for A_pred, adj_label in zip(A_pred_list, adj_labels):
-                # Ensure adj_label is on the same device as A_pred
-                adj_label = adj_label.to(A_pred.device)
-                loss = F.binary_cross_entropy(A_pred.view(-1), adj_label.to_dense().view(-1))
-                kl_divergence = 0.5 / A_pred.size(0) * (
-                            1 + 2 * z_log_sigma - z_mu ** 2 - torch.exp(z_log_sigma) ** 2).sum(1).mean()
-                loss -= kl_divergence  # to train cora, we need to add the kl divergence
-                loss_list.append(loss)
-            # print(loss_list)
+                # Calculate the reconstruction loss for each layer and sum them up
+                loss_list = []
+                for A_pred, adj_label in zip(A_pred_list, adj_labels):
+                    # Ensure adj_label is on the same device as A_pred
+                    adj_label = adj_label.to(A_pred.device)
+                    loss = F.binary_cross_entropy(A_pred.view(-1), adj_label.to_dense().view(-1))
+                    kl_divergence = 0.5 / A_pred.size(0) * (
+                                1 + 2 * z_log_sigma - z_mu ** 2 - torch.exp(z_log_sigma) ** 2).sum(1).mean()
+                    loss -= kl_divergence  # to train cora, we need to add the kl divergence
+                    loss_list.append(loss)
+                # print(loss_list)
 
-            # Take the average of the losses from all layers
-            loss_total = sum(loss_list) / len(A_pred_list)
+                # Take the average of the losses from all layers
+                loss_total = sum(loss_list) / len(A_pred_list)
 
-            # Backpropagation
-            optimizer.zero_grad()
-            loss_total.backward()
-            optimizer.step()
+                # Backpropagation
+                optimizer.zero_grad()
+                loss_total.backward()
+                optimizer.step()
 
-            if (epoch + 1) % 1 == 0:
-                print(f"Pretrain Epoch: {epoch + 1}/{args.pretrain_epochs}, Loss: {loss_total.item()}")
+                if (epoch + 1) % 1 == 0:
+                    print(f"Pretrain Epoch: {epoch + 1}/{args.pretrain_epochs}, Loss: {loss_total.item()}")
 
-        # After pretraining, detach the embeddings and run KMeans clustering
-        z_detached = z.detach().cpu().numpy()
-        kmeans = KMeans(n_clusters=args.num_clusters).fit(z_detached)
-        labelk = kmeans.labels_
-        print("pretraining ARI Kmeans:", adjusted_rand_score(labels, labelk))
+            # After pretraining, detach the embeddings and run KMeans clustering
+            z_detached = z.detach().cpu().numpy()
+            kmeans = KMeans(n_clusters=args.num_clusters).fit(z_detached)
+            labelk = kmeans.labels_
+            print("pretraining ARI Kmeans:", adjusted_rand_score(labels, labelk))
 
-        # Initialize cluster parameters based on KMeans results
-        self.delta.fill_(1e-8)
-        seq = np.arange(0, len(self.delta))
-        positions = np.vstack((seq, labelk))
-        self.delta[positions] = 1.
-        # print(self.delta)
+            # Initialize cluster parameters based on KMeans results
+            self.delta.fill_(1e-8)
+            seq = np.arange(0, len(self.delta))
+            positions = np.vstack((seq, labelk))
+            self.delta[positions] = 1.
+            # print(self.delta)
 
-        self.mu_k.data = torch.from_numpy(kmeans.cluster_centers_).float().to(device)
+            self.mu_k.data = torch.from_numpy(kmeans.cluster_centers_).float().to(device)
 
-        print('Pretraining completed.')
+            torch.save(self.state_dict(), './pretrain_model.pk')
+            print('Pretraining completed.')
+
+        else:
+            self.load_state_dict(torch.load('./pretrain_model.pk'))
+
 
     # Functions for the initialization of cluster parameters
     def update_delta(self, mu_phi, log_cov_phi, pi_k, mu_k, log_cov_k, P):
@@ -232,11 +238,11 @@ class MultiLPM(nn.Module):
                    + torch.norm(mu_K - mu_phi, dim=1, keepdim=True) ** 2 / torch.exp(log_cov_K + det)
             KL[:, k] = 0.5 * temp.squeeze() + det
             if torch.isnan(KL).any():
-                print("NaN values detected in KL matrix in pretraining")
+                print("NaN values detected in KL matrix in update delta")
 
         denominator = torch.sum(pi_k.unsqueeze(0) * torch.exp(-KL), axis=1, dtype = torch.float32)
         for k in range(args.num_clusters):
-            self.delta.data[:, k] = pi_k[k] * torch.exp(-KL[:, k]) / denominator + det
+            self.delta.data[:, k] = pi_k[k] * torch.exp(-KL[:, k]) / (denominator + det)
 
     def update_others(self, mu_phi, log_cov_phi, delta, P):
         N_k = torch.sum(delta, axis=0, dtype = torch.float32)
