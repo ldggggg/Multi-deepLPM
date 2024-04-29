@@ -12,9 +12,7 @@ from sklearn.metrics.cluster import adjusted_rand_score
 import matplotlib.pyplot as plt
 
 from preprocessing import *
-import model
 import args
-from testA import create_simuA
 
 import pdb
 
@@ -97,6 +95,10 @@ def Multi_ELBO_Loss(delta, pi_k, mu_k, log_cov_k, mu_phi, log_cov_phi, A_pred_li
 def run_training(model, adj_matrices, labels):
     ##################### Load data ########################
     if args.dataset == 'simuA':
+        # adj_matrices, labels = create_simuA(args.num_points, args.num_clusters, 0.95, 42)
+        feat_matrix = np.eye(args.num_points)
+        cov_matrices = [np.zeros(args.num_points), np.zeros(args.num_points), np.zeros(args.num_points)]  # , np.zeros(args.num_points), np.zeros(args.num_points)
+    elif args.dataset == 'simuB':
         # adj_matrices, labels = create_simuA(args.num_points, args.num_clusters, 0.95, 42)
         feat_matrix = np.eye(args.num_points)
         cov_matrices = [np.zeros(args.num_points), np.zeros(args.num_points), np.zeros(args.num_points)]  # , np.zeros(args.num_points), np.zeros(args.num_points)

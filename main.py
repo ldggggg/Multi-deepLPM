@@ -1,19 +1,22 @@
 import csv
 import numpy as np
 from testA import create_simuA
+from testB import create_simuB
+from testC import create_simuC
+
 from train import run_training # Adjust this import based on your actual module and function
 import model
 
-zeta_values = [0.4, 0.3, 0.2]  # [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.95]
-seeds = [42, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]  # [42, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]  # [42, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-num_runs = 1
+zeta_values = [0.5]  # [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.95]
+seeds = np.arange(0, 25).tolist()  # np.arange(0, 25).tolist()  # [42, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]  # [42, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+num_runs = 3
 results = []
 
 for zeta in zeta_values:
     for seed in seeds:
         ari_values = []
         for run in range(num_runs):
-            adj_matrices, labels = create_simuA(N=600, K=3, zeta=zeta, seed=seed)  # Adjust N and K as per your setup
+            adj_matrices, labels = create_simuB(N=600, K=3, zeta=zeta, seed=seed)  # Adjust N and K as per your setup
             max_ari = run_training(model, adj_matrices, labels)
             ari_values.append(max_ari)
 

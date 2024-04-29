@@ -17,8 +17,8 @@ def create_simuB(N, K, zeta=1.0, seed=None):
 
     a1 = 0.25
     b1 = 0.01 + (1 - zeta) * (a1 - 0.01)
-    a2 = 0.35
-    b2 = 0.05 + (1 - zeta) * (a2 - 0.05)
+    a2 = 0.1
+    b2 = 0.03 + (1 - zeta) * (a2 - 0.03)
     a3 = 0.15
     b3 = 0.02 + (1 - zeta) * (a3 - 0.02)
 
@@ -47,7 +47,7 @@ def create_simuB(N, K, zeta=1.0, seed=None):
             prob3 = Pi3[c[i], c[j]]
             A3[i, j] = A3[j, i] = bernoulli.rvs(prob3, loc=0, size=1)
 
-    adj_matrices = [A1]  # A3, A2,
+    adj_matrices = [A1, A2, A3]  # A3, A2,
     print("sparsity A1:", np.sum(A1) / (N * N))
     print("sparsity A2:", np.sum(A2) / (N * N))
     print("sparsity A3:", np.sum(A3) / (N * N))

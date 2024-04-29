@@ -218,8 +218,11 @@ class MultiLPM(nn.Module):
 
             self.mu_k.data = torch.from_numpy(kmeans.cluster_centers_).float().to(device)
 
-            torch.save(self.state_dict(), './pretrain_model.pk')
-            print('Pretraining completed.')
+            if adjusted_rand_score(labels, labelk) < 0.001:
+                MultiLPM.pretrain(self, X, adj_labels, Y_list, labels)
+            else:
+                # torch.save(self.state_dict(), './pretrain_model.pk')
+                print('Pretraining completed.')
 
         else:
             self.load_state_dict(torch.load('./pretrain_model.pk'))
