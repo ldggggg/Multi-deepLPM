@@ -1,9 +1,14 @@
 import numpy as np
 from scipy.spatial.distance import pdist, squareform
+from scipy.special import expit
+from scipy.stats import bernoulli
 import args
 import pickle
 
-def create_simuC(N, K):
+def create_simuC(N, K, seed=None):
+
+    if seed is not None:
+        np.random.seed(seed)
 
     x = np.random.uniform(-1,1,N//K)
     c = np.random.multinomial(1, [0.5,0.5], size=N//K)
@@ -47,27 +52,46 @@ def create_simuC(N, K):
     dst = pdist(C, 'euclidean')
     dst = squareform(dst)
 
-    alpha = 0.2
-    from scipy.special import expit
-    from scipy.stats import bernoulli
-    A = np.zeros((N, N))
+    alpha1 = -1.5
+    gamma1 = 0.1  # -1.5-0.1d
+    alpha2 = -0.2
+    gamma2 = 0.5  # -0.2-0.5d
+    # same as a single layer in deepLPM
+    alpha3 = 0.2
+    gamma3 = 1  # 0.2-d
+
+    A1 = np.zeros((N, N))
+    A2 = np.zeros((N, N))
+    A3 = np.zeros((N, N))
+
     for i in range(N - 1):
         for j in range(i + 1, N):
-            prob = expit(alpha - dst[i,j])
-            A[i,j] = A[j,i] = bernoulli.rvs(prob, loc=0, size=1)
+            prob1 = expit(alpha1 - gamma1 * dst[i, j])
+            A1[i, j] = A1[j, i] = bernoulli.rvs(prob1, loc=0, size=1)
 
-    np.savetxt('adj_simuC_3clusters.txt', A)
-    np.savetxt('label_simuC_3clusters.txt', Label)
+            prob2 = expit(alpha2 - gamma2 * dst[i, j])
+            A2[i, j] = A2[j, i] = bernoulli.rvs(prob2, loc=0, size=1)
+
+            prob3 = expit(alpha3 - gamma3 * dst[i, j])
+            A3[i, j] = A3[j, i] = bernoulli.rvs(prob3, loc=0, size=1)
+
+    adj_matrices = [A3, A2, A1]  # A3, A2,
+    print("sparsity A1:", np.sum(A1) / (N * N))
+    print("sparsity A2:", np.sum(A2) / (N * N))
+    print("sparsity A3:", np.sum(A3) / (N * N))
+
+    # np.savetxt('adj_simuC_3clusters.txt', A)
+    # np.savetxt('label_simuC_3clusters.txt', Label)
 
 ###################### for LPCM #####################
-    a = np.sum(A, axis=0)
-    arr = np.delete(A, np.where(a == 0), axis=0)
-    arr = np.delete(arr, np.where(a == 0), axis=1)
-    lab = np.delete(Label, np.where(a == 0), axis=0)
+    # a = np.sum(A, axis=0)
+    # arr = np.delete(A, np.where(a == 0), axis=0)
+    # arr = np.delete(arr, np.where(a == 0), axis=1)
+    # lab = np.delete(Label, np.where(a == 0), axis=0)
+    #
+    # np.savetxt('adj_simuC_3clusters_LPCM.txt', arr)
+    # np.savetxt('label_simuC_3clusters_LPCM.txt', lab)
 
-    np.savetxt('adj_simuC_3clusters_LPCM.txt', arr)
-    np.savetxt('label_simuC_3clusters_LPCM.txt', lab)
+    return adj_matrices, Label
 
-    return A, Label
-
-# A, Label = create_simuC(args.num_points, args.num_clusters)
+# A, Label = create_simuC(100, 3, 0)

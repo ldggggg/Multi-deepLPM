@@ -1,5 +1,5 @@
 ### CONFIGS ###
-dataset = 'simuB'
+dataset = 'simuA'
 model = 'MultiLPM'
 
 num_clusters = 3  # K

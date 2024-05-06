@@ -98,7 +98,7 @@ def run_training(model, adj_matrices, labels):
         # adj_matrices, labels = create_simuA(args.num_points, args.num_clusters, 0.95, 42)
         feat_matrix = np.eye(args.num_points)
         cov_matrices = [np.zeros(args.num_points), np.zeros(args.num_points), np.zeros(args.num_points)]  # , np.zeros(args.num_points), np.zeros(args.num_points)
-    elif args.dataset == 'simuB':
+    elif args.dataset == 'simuB' or 'simuC':
         # adj_matrices, labels = create_simuA(args.num_points, args.num_clusters, 0.95, 42)
         feat_matrix = np.eye(args.num_points)
         cov_matrices = [np.zeros(args.num_points), np.zeros(args.num_points), np.zeros(args.num_points)]  # , np.zeros(args.num_points), np.zeros(args.num_points)
@@ -289,7 +289,7 @@ def run_training(model, adj_matrices, labels):
     labelk = kmeans.labels_
     print("ARI_kmeans_embedding:", adjusted_rand_score(labels, labelk))
 
-    return max(store_ari)
+    return max(store_ari), min(store_loss)
 
 
 # if __name__ == "__main__":

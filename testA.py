@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from scipy.special import expit
 from scipy.stats import bernoulli
 import networkx as nx
+import os
 
 def create_simuA(N, K, zeta=0.95, seed=None):
 # N = args.num_points
@@ -144,35 +145,20 @@ def create_simuA(N, K, zeta=0.95, seed=None):
 # A, Label = create_simu(args.num_points, args.num_clusters)
 # A, Label = create_simuA(100, 3, 42, 0.95)
 
-############## loading and manipulatind docs and vocabulary  ###############
-# dct = pickle.load(open('dizionario_2texts.pkl', 'rb'))
-# dctn = dct.token2id
-# V = len(dctn)
-#
-# with open('sim_data_docs_deeplsm_2texts', 'rb') as fp:
-#     docs = pickle.load(fp)
-# # num version of docs
-# ndocs = []
-# for doc in range(len(docs)):
-#     tmp = []
-#     for word in docs[doc]:
-#         tmp.append(dctn[word])
-#     ndocs.append(tmp)
-# # complete dtm for row
-# cdtm = []
-# for idx in range(len(ndocs)):
-#     cdtm.append(np.bincount(ndocs[idx], minlength=V))
-# cdtm = np.asarray(cdtm, dtype='float32')
-#
-# edges = np.zeros((args.num_points, args.num_points, V))
-# clr = np.where(A == 1)[0]
-# clc = np.where(A == 1)[1]
-# for i in range(len(clr)):
-#     edges[clr[i],clc[i],:] = edges[clc[i],clr[i],:] = cdtm[args.num_points*clr[i]+clc[i],:]
-#
-# with open('edges_simu_3clusters_2texts_delta0.4', 'wb') as fp:
-#     pickle.dump(edges, fp)
-#
-# # with open('edges_simu_3clusters_2texts', 'rb') as fp:
-# #     edges_test = pickle.load(fp)
-# # sum = np.sum(edges_test, axis=1)
+############## save data for spacenet ###############
+# Parameters
+N = 600
+K = 3
+zetas = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.95]
+seeds = [42]
+
+# Directory to save output files
+output_dir = "network_data"
+os.makedirs(output_dir, exist_ok=True)
+
+for zeta in zetas:
+    for seed in seeds:
+        matrices, labels = create_simuA(N, K, zeta, seed)
+        for idx, matrix in enumerate(matrices):
+            np.savetxt(f"{output_dir}/adj_matrix_{seed}_{zeta}_{idx+1}.csv", matrix, delimiter=",")
+        np.savetxt(f"{output_dir}/labels_{seed}_{zeta}.csv", labels, delimiter=",")
