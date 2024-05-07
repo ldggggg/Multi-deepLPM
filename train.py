@@ -15,7 +15,7 @@ from preprocessing import *
 import args
 
 import pdb
-
+import scipy.io as sio
 
 # Train on CPU or GPU
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
@@ -67,7 +67,7 @@ def Multi_ELBO_Loss(delta, pi_k, mu_k, log_cov_k, mu_phi, log_cov_phi, A_pred_li
         # Sum up the loss from each layer
         Loss1 += loss_layer
 
-    # Loss1 += F.binary_cross_entropy(A_pred.view(-1), adj_label_dense.view(-1))
+        # Loss1 += F.binary_cross_entropy(A_pred.view(-1), adj_label_dense.view(-1))
     Loss1 /= len(A_pred_list)
 
     # KL divergence
@@ -94,7 +94,12 @@ def Multi_ELBO_Loss(delta, pi_k, mu_k, log_cov_k, mu_phi, log_cov_phi, A_pred_li
 
 def run_training(model, adj_matrices, labels):
     ##################### Load data ########################
-    if args.dataset == 'simuA':
+    if args.dataset == "ACM":
+        data = sio.loadmat("D:/Work/Benchmark/WWW2020-O2MAC-master/data/ACM3025.mat")
+        feat_matrix = data['feature'].astype(float)
+        # print("feat_matrix:", feat_matrix.shape)
+        cov_matrices = [np.zeros(args.num_points), np.zeros(args.num_points)]
+    elif args.dataset == 'simuA':
         # adj_matrices, labels = create_simuA(args.num_points, args.num_clusters, 0.95, 42)
         feat_matrix = np.eye(args.num_points)
         cov_matrices = [np.zeros(args.num_points), np.zeros(args.num_points), np.zeros(args.num_points)]  # , np.zeros(args.num_points), np.zeros(args.num_points)
@@ -102,6 +107,7 @@ def run_training(model, adj_matrices, labels):
         # adj_matrices, labels = create_simuA(args.num_points, args.num_clusters, 0.95, 42)
         feat_matrix = np.eye(args.num_points)
         cov_matrices = [np.zeros(args.num_points), np.zeros(args.num_points), np.zeros(args.num_points)]  # , np.zeros(args.num_points), np.zeros(args.num_points)
+
 
     # Initialize lists to store the processed matrices
     processed_adj_norms = []
@@ -119,8 +125,6 @@ def run_training(model, adj_matrices, labels):
     for adj, cov in zip(adj_matrices, cov_matrices):
         # Convert adjacency matrix to scipy CSR format
         adj_csr = sp.csr_matrix(adj)
-        print(adj.shape)
-        print(adj_csr.shape)
 
         # Normalize the adjacency matrix
         adj_norm = preprocess_graph(adj_csr)
@@ -256,32 +260,32 @@ def run_training(model, adj_matrices, labels):
     print('training time ......................:', end-begin)
 
     ################################# plots to show results ###################################
-    # # plot train loss
-    # f, ax = plt.subplots(1, figsize=(15, 10))
-    # plt.subplot(231)
-    # plt.plot(store_loss1.cpu().data.numpy(), color='red')
-    # plt.title("Reconstruction loss1")
-    #
-    # plt.subplot(232)
-    # plt.plot(store_loss2.cpu().data.numpy(), color='red')
-    # plt.title("KL loss2")
-    #
-    # plt.subplot(233)
-    # plt.plot(store_loss3.cpu().data.numpy(), color='red')
-    # plt.title("Cluster loss3")
-    #
-    # plt.subplot(212)
-    # plt.plot(store_loss.cpu().data.numpy(), color='red')
-    # plt.title("Training loss in total")
-    #
-    # plt.show()
-    #
-    # # plot ARI
-    # if args.dataset != 'eveques':
-    #     f, ax = plt.subplots(1, figsize=(15, 10))
-    #     ax.plot(store_ari, color='blue')
-    #     ax.set_title("ARI")
-    #     plt.show()
+    # plot train loss
+    f, ax = plt.subplots(1, figsize=(15, 10))
+    plt.subplot(231)
+    plt.plot(store_loss1.cpu().data.numpy(), color='red')
+    plt.title("Reconstruction loss1")
+
+    plt.subplot(232)
+    plt.plot(store_loss2.cpu().data.numpy(), color='red')
+    plt.title("KL loss2")
+
+    plt.subplot(233)
+    plt.plot(store_loss3.cpu().data.numpy(), color='red')
+    plt.title("Cluster loss3")
+
+    plt.subplot(212)
+    plt.plot(store_loss.cpu().data.numpy(), color='red')
+    plt.title("Training loss in total")
+
+    plt.show()
+
+    # plot ARI
+    if args.dataset != 'eveques':
+        f, ax = plt.subplots(1, figsize=(15, 10))
+        ax.plot(store_ari, color='blue')
+        ax.set_title("ARI")
+        plt.show()
     print("ARI_delta:", max(store_ari))
 
     # ARI with kmeans

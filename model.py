@@ -37,6 +37,7 @@ class GCN(nn.Module):
         self.activation = activation
 
     def forward(self, inputs):
+        # print("adj shape:", self.adj.shape)
         # print("X dim:", inputs.shape)
         x = torch.mm(inputs, self.weight)
         # print("XW dim:", x.shape)
@@ -78,6 +79,7 @@ class MultiEncoder(nn.Module):
             args.emb_dim, 1))
 
     def forward(self, X):
+        # print("X dim:", X.shape)
         self.all_means = []
         self.all_logstds = []
 
@@ -131,6 +133,8 @@ class MultiDecoder(nn.Module):
 
             # The final prediction for the adjacency matrix for this layer
             A_pred = torch.sigmoid(alpha + Y_beta - distance_term)
+            A_pred = torch.clamp(A_pred, min=1e-8, max=1 - 1e-8)
+            # print(f"Min and Max A_pred: {A_pred.min().item()}, {A_pred.max().item()}")
             A_pred_list.append(A_pred)
 
             # A_pred = torch.sigmoid(alpha + Y_beta - distance_term)
@@ -216,7 +220,7 @@ class MultiLPM(nn.Module):
             self.delta[positions] = 1.
             # print(self.delta)
 
-            self.mu_k.data = torch.from_numpy(kmeans.cluster_centers_).float().to(device)
+            # self.mu_k.data = torch.from_numpy(kmeans.cluster_centers_).float().to(device)
 
             if adjusted_rand_score(labels, labelk) < 0.001:
                 MultiLPM.pretrain(self, X, adj_labels, Y_list, labels)

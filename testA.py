@@ -150,7 +150,7 @@ def create_simuA(N, K, zeta=0.95, seed=None):
 N = 600
 K = 3
 zetas = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.95]
-seeds = [42]
+seeds = [0]
 
 # Directory to save output files
 output_dir = "network_data"
