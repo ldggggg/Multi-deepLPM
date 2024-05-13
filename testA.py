@@ -149,8 +149,8 @@ def create_simuA(N, K, zeta=0.95, seed=None):
 # Parameters
 N = 600
 K = 3
-zetas = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.95]
-seeds = [0]
+zetas = [0.95, 0.6, 0.4]  # [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.95]
+seeds = np.arange(1, 25).tolist()  # [0]
 
 # Directory to save output files
 output_dir = "network_data"

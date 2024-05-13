@@ -1,5 +1,5 @@
 ### CONFIGS ###
-dataset = 'ACM'
+dataset = 'simuB'
 model = 'MultiLPM'
 
 if dataset == 'ACM':

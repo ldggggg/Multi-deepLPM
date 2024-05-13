@@ -8,6 +8,7 @@ def create_simuB(N, K, zeta=1.0, seed=None):
 # K = args.num_clusters
 # D = args.hidden2_dim
 # K = 3
+    print(N, K, zeta, seed)
     if seed is not None:
         np.random.seed(seed)
 
