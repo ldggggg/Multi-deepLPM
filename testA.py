@@ -12,6 +12,9 @@ def create_simuA(N, K, zeta=0.95, seed=None):
 # N = args.num_points
 # K = args.num_clusters
 # D = args.hidden2_dim
+
+    print('creating simuA....................')
+
     if seed is not None:
         np.random.seed(seed)
 
@@ -145,20 +148,20 @@ def create_simuA(N, K, zeta=0.95, seed=None):
 # A, Label = create_simu(args.num_points, args.num_clusters)
 # A, Label = create_simuA(100, 3, 42, 0.95)
 
-############## save data for spacenet ###############
-# Parameters
-N = 600
-K = 3
-zetas = [0.95, 0.6, 0.4]  # [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.95]
-seeds = np.arange(1, 25).tolist()  # [0]
-
-# Directory to save output files
-output_dir = "network_data"
-os.makedirs(output_dir, exist_ok=True)
-
-for zeta in zetas:
-    for seed in seeds:
-        matrices, labels = create_simuA(N, K, zeta, seed)
-        for idx, matrix in enumerate(matrices):
-            np.savetxt(f"{output_dir}/adj_matrix_{seed}_{zeta}_{idx+1}.csv", matrix, delimiter=",")
-        np.savetxt(f"{output_dir}/labels_{seed}_{zeta}.csv", labels, delimiter=",")
+# ############## save data for spacenet ###############
+# # Parameters
+# N = 600
+# K = 3
+# zetas = [0.95, 0.6, 0.4]  # [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.95]
+# seeds = np.arange(1, 25).tolist()  # [0]
+#
+# # Directory to save output files
+# output_dir = "network_data"
+# os.makedirs(output_dir, exist_ok=True)
+#
+# for zeta in zetas:
+#     for seed in seeds:
+#         matrices, labels = create_simuA(N, K, zeta, seed)
+#         for idx, matrix in enumerate(matrices):
+#             np.savetxt(f"{output_dir}/adj_matrix_{seed}_{zeta}_{idx+1}.csv", matrix, delimiter=",")
+#         np.savetxt(f"{output_dir}/labels_{seed}_{zeta}.csv", labels, delimiter=",")

@@ -7,6 +7,8 @@ import pickle
 
 def create_simuC(N, K, seed=None):
 
+    print('creating simuC....................')
+
     if seed is not None:
         np.random.seed(seed)
 
@@ -28,13 +30,13 @@ def create_simuC(N, K, seed=None):
     y3 = np.sqrt(100-x3**2) + np.random.normal(0,0.1,N-2*(N//K))
     y3[c==1] = -y3[c==1]
 
-    import matplotlib.pyplot as plt
-    f, ax = plt.subplots(1, figsize=(8, 8))
-    ax.scatter(x, y, color='#7294d4')
-    ax.scatter(x2, y2, color='#fdc765')
-    ax.scatter(x3, y3, color='#869f82')
-    ax.set_title("Original Embeddings of Scenario C", fontsize=18)
-    # f.savefig("C:/Users/Dingge/Desktop/results/emb_orig_C.pdf", bbox_inches='tight')
+    # import matplotlib.pyplot as plt
+    # f, ax = plt.subplots(1, figsize=(8, 8))
+    # ax.scatter(x, y, color='#7294d4')
+    # ax.scatter(x2, y2, color='#fdc765')
+    # ax.scatter(x3, y3, color='#869f82')
+    # ax.set_title("Original Embeddings of Scenario C", fontsize=18)
+    # # f.savefig("C:/Users/Dingge/Desktop/results/emb_orig_C.pdf", bbox_inches='tight')
 
     K1 = np.concatenate((x.reshape(-1,1),y.reshape(-1,1)), axis=1)
     K2 = np.concatenate((x2.reshape(-1,1),y2.reshape(-1,1)), axis=1)
@@ -95,3 +97,21 @@ def create_simuC(N, K, seed=None):
     return adj_matrices, Label
 
 # A, Label = create_simuC(100, 3, 0)
+
+# ############## save data for spacenet ###############
+# import os
+# # Parameters
+# N = 600
+# K = 3
+# zeta = 0
+# seeds = [0]  # np.arange(0, 25).tolist()  # [0]
+#
+# # Directory to save output files
+# output_dir = "network_data_C"
+# os.makedirs(output_dir, exist_ok=True)
+#
+# for seed in seeds:
+#     matrices, labels = create_simuC(N, K, seed)
+#     for idx, matrix in enumerate(matrices):
+#         np.savetxt(f"{output_dir}/adj_matrix_{seed}_{zeta}_{idx + 1}.csv", matrix, delimiter=",")
+#     np.savetxt(f"{output_dir}/labels_{seed}_{zeta}.csv", labels, delimiter=",")

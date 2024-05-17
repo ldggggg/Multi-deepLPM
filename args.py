@@ -1,8 +1,24 @@
 ### CONFIGS ###
-dataset = 'simuB'
+dataset = 'enron'
 model = 'MultiLPM'
 
-if dataset == 'ACM':
+if dataset == 'enron':
+    num_clusters = 5  # K
+    num_points = 148  # N
+    feature_dim = 148  # dim of Y
+    input_dim = 148  # dim of X
+    hidden_dim = 64
+    output_dims = [16, 16]  # [16, 16, 16]
+    emb_dim = 16  # P
+    num_layers = 2  # L
+
+    pretrain_epochs = 30  # 50 for simuA
+    pretrain_lr = 2e-3  # 1e-2 for simuA
+
+    train_epochs = 1200  # 1000
+    train_lr = 1e-2
+
+elif dataset == 'ACM':
     num_clusters = 3  # K
     num_points = 3025  # N
     feature_dim = 3025  # dim of Y

@@ -173,7 +173,7 @@ class MultiLPM(nn.Module):
         self.log_cov_k = nn.Parameter(torch.FloatTensor(args.num_clusters, 1).fill_(0.1), requires_grad=False)
 
     def pretrain(self, X, adj_labels, Y_list, labels):
-        if not os.path.exists('./pretrain_model.pk'):
+        if not os.path.exists('./pretrain_model_enron.pk'):
             # Define an optimizer for the pretraining phase
             optimizer = Adam(itertools.chain(self.encoder.parameters(), self.decoder.parameters()), lr=args.pretrain_lr)
 
@@ -211,7 +211,7 @@ class MultiLPM(nn.Module):
             z_detached = z.detach().cpu().numpy()
             kmeans = KMeans(n_clusters=args.num_clusters).fit(z_detached)
             labelk = kmeans.labels_
-            print("pretraining ARI Kmeans:", adjusted_rand_score(labels, labelk))
+            # print("pretraining ARI Kmeans:", adjusted_rand_score(labels, labelk))
 
             # Initialize cluster parameters based on KMeans results
             self.delta.fill_(1e-8)
@@ -225,11 +225,12 @@ class MultiLPM(nn.Module):
             if adjusted_rand_score(labels, labelk) < 0.001:
                 MultiLPM.pretrain(self, X, adj_labels, Y_list, labels)
             else:
-                torch.save(self.state_dict(), './pretrain_model.pk')
+                torch.save(self.state_dict(), './pretrain_model_enron.pk')
                 print('Pretraining completed.')
 
         else:
-            self.load_state_dict(torch.load('./pretrain_model.pk'))
+            print('loading pretrain.................')
+            self.load_state_dict(torch.load('./pretrain_model_enron.pk'))
 
 
     # Functions for the initialization of cluster parameters
