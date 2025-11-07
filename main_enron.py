@@ -1,3 +1,4 @@
+### to load real-world data
 from enron import load_enron
 import model
 import torch
@@ -12,6 +13,10 @@ from preprocessing import *
 import args
 import pdb
 import scipy.io as sio
+### to create simu data
+from testA import create_simuA
+# from testB import create_simuB
+# from testC import create_simuC
 
 # Train on CPU or GPU
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
@@ -89,6 +94,7 @@ def Multi_ELBO_Loss(delta, pi_k, mu_k, log_cov_k, mu_phi, log_cov_phi, A_pred_li
 
 
 ##################### Load data ########################
+### to load real-world data
 if args.dataset == 'enron':
     adj_matrices, labels = load_enron()
     feat_matrix = np.eye(args.num_points)
@@ -98,8 +104,9 @@ elif args.dataset == "ACM":
     feat_matrix = data['feature'].astype(float)
     # print("feat_matrix:", feat_matrix.shape)
     cov_matrices = [np.zeros(args.num_points), np.zeros(args.num_points)]
+### to create simu data
 elif args.dataset == 'simuA' or 'simuB' or 'simuC':
-    # adj_matrices, labels = create_simuA(args.num_points, args.num_clusters, 0.95, 42)
+    adj_matrices, labels = create_simuA(args.num_points, args.num_clusters, 0.95, 42)
     feat_matrix = np.eye(args.num_points)
     cov_matrices = [np.zeros(args.num_points), np.zeros(args.num_points), np.zeros(args.num_points)]
 
@@ -161,7 +168,7 @@ store_loss = torch.zeros(args.train_epochs).to(device)
 store_loss1 = torch.zeros(args.train_epochs).to(device)
 store_loss2 = torch.zeros(args.train_epochs).to(device)
 store_loss3 = torch.zeros(args.train_epochs).to(device)
-# store_ari = []
+store_ari = []  # for simu data who have the true labels
 
 #################################### train model #####################################
 begin = time.time()
@@ -222,7 +229,7 @@ for epoch in range(args.train_epochs):
     store_loss2[epoch] = torch.Tensor.item(loss2)
     store_loss3[epoch] = torch.Tensor.item(loss3)
     # save ARI
-    # store_ari.append(adjusted_rand_score(labels, torch.argmax(delta, axis=1).cpu().numpy()))
+    store_ari.append(adjusted_rand_score(labels, torch.argmax(delta, axis=1).cpu().numpy()))  # for simu data who have the true labels
 
     if torch.isnan(loss).any() or torch.isnan(loss1).any() or torch.isnan(loss2).any() or torch.isnan(loss3).any():
         break  # Optionally stop training if a NaN is found
@@ -251,13 +258,14 @@ plt.title("Training loss in total")
 
 plt.show()
 
-# # plot ARI
-# if args.dataset != 'enron':
-#     f, ax = plt.subplots(1, figsize=(15, 10))
-#     ax.plot(store_ari, color='blue')
-#     ax.set_title("ARI")
-#     plt.show()
-# print("ARI_delta:", max(store_ari))
+# plot ARI
+# for simu data who have the true labels
+if args.dataset != 'enron':
+    f, ax = plt.subplots(1, figsize=(15, 10))
+    ax.plot(store_ari, color='blue')
+    ax.set_title("ARI")
+    plt.show()
+print("ARI_delta:", max(store_ari))
 
 # ARI with kmeans
 kmeans = KMeans(n_clusters=args.num_clusters).fit(model.encoder.aggregated_mean.cpu().data.numpy())
@@ -276,6 +284,7 @@ print("ARI_kmeans_embedding:", adjusted_rand_score(labels, labelk))
 
 
 ###################### plot 1 ################################
+### used for simu data who has true labels
 from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
 
@@ -306,6 +315,7 @@ plt.show()
 
 
 ###################### plot 2 ################################
+### used for real-world datasets
 # Determine the most probable cluster for each node
 cluster_labels = np.argmax(model.delta.cpu().data.numpy(), axis=1)
 
@@ -323,6 +333,7 @@ plt.show()
 
 
 ###################### plot 3 ################################
+### used for real-world datasets
 from sklearn.metrics import confusion_matrix
 import seaborn as sns
 from sklearn.preprocessing import LabelEncoder

@@ -1,5 +1,5 @@
 ### CONFIGS ###
-dataset = 'enron'
+dataset = 'simuA'
 model = 'MultiLPM'
 
 if dataset == 'enron':
